@@ -151,23 +151,77 @@ bool PieceManager::is_complete() const {
     return _completed_pieces == _num_pieces;
 }
 
+bool PieceManager::endgame_required() {
+    return _num_pieces - _completed_pieces <= 10;
+}
+
 // return piece_index, offset, length, or nullopt, if nothing
-std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const boost::dynamic_bitset<>& peer_bitfield) {
-    if (_completed_pieces == _num_pieces) return std::nullopt;
+// std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const boost::dynamic_bitset<>& peer_bitfield) {
+//     if (_completed_pieces == _num_pieces) {
+//         endgame = false;
+//         return std::nullopt;
+//     }
     
+//     assert(peer_bitfield.size() == _num_pieces && "Bitfield size mismatch");
+
+//     for (int i{}; i < _num_pieces; ++i) {
+//         if (_pieces[i].is_complete) continue;
+
+//         if (peer_bitfield.test(i)) {
+//             lazy_init((uint32_t)i);
+//             auto& curr = _pieces[i];
+//             for (int j{}; j < curr.block_status.size(); ++j) {
+//                 auto& status = curr.block_status[j];
+//                 if (status == BlockState::NotRequested) {
+//                     status = BlockState::Requested;
+//                     return std::make_tuple(i, j * 16384, std::min(16384, (int)piece_length_for_index(i) - j * 16384));
+//                 }
+//             }
+//         }
+//     }
+
+//     return std::nullopt;
+// }
+
+// Experimental requests with endgame
+
+std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const boost::dynamic_bitset<>& peer_bitfield)
+{
+    if (_completed_pieces == _num_pieces) {
+        endgame = false;
+        return std::nullopt;
+    }
+
     assert(peer_bitfield.size() == _num_pieces && "Bitfield size mismatch");
 
-    for (int i{}; i < _num_pieces; ++i) {
-        if (_pieces[i].is_complete) continue;
+    endgame = endgame_required();
 
-        if (peer_bitfield.test(i)) {
-            lazy_init((uint32_t)i);
-            auto& curr = _pieces[i];
-            for (int j{}; j < curr.block_status.size(); ++j) {
-                if (curr.block_status[j] == BlockState::NotRequested) {
-                    curr.block_status[j] = BlockState::Requested;
-                    return std::make_tuple(i, j * 16384, std::min(16384, (int)piece_length_for_index(i) - j * 16384));
-                }
+    const uint32_t piece_start = endgame ? endgame_cursor % _num_pieces : 0;
+
+    for (uint32_t di = 0; di < _num_pieces; ++di) {
+        uint32_t i = (piece_start + di) % _num_pieces;
+
+        if (_pieces[i].is_complete || !peer_bitfield.test(i)) continue;
+
+        lazy_init(i);
+        auto& piece = _pieces[i];
+
+        for (uint32_t j = 0; j < piece.block_status.size(); ++j) {
+            auto& status = piece.block_status[j];
+
+            // ---- NORMAL MODE ----
+            if (!endgame) {
+                if (status != BlockState::NotRequested) continue;
+                status = BlockState::Requested;
+                return std::make_tuple(i, j * 16384, std::min(16384, (int)piece_length_for_index(i) - (int)(j * 16384)));
+            }
+
+            // ---- ENDGAME MODE ----
+            if (endgame && status != BlockState::Received) {
+                // only mark if this is the first request
+                if (status == BlockState::NotRequested) status = BlockState::Requested;
+                endgame_cursor = i + 1;
+                return std::make_tuple(i, j * 16384, std::min(16384, (int)piece_length_for_index(i) - (int)(j * 16384)));
             }
         }
     }

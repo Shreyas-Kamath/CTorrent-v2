@@ -87,7 +87,7 @@ private:
 
     // state
     int _in_flight = 0;
-    int MAX_IN_FLIGHT = 8;
+    int MAX_IN_FLIGHT = 10;
     static constexpr auto REQUEST_TIMEOUT = std::chrono::seconds(10);
     boost::asio::steady_timer block_timeout_timer;
     std::vector<InFlight> in_flight_blocks;
