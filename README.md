@@ -1,35 +1,67 @@
-What began as a throwaway toy project quickly turned into my main focus and obsession for my resume, and I proudly present my first proper C++ software, a BitTorrent client :) Tired of all the weather scraping/CRUD/E-commerce websites, I finally built something I could actually use in my daily life.
+# CTorrent-v2
 
-I have lifted some code and ideas from my old project, and added new code and optimisations wherever I felt necessary, and spent hours, days, weeks debugging the absolute worst class of async, memory-related, lifetime, concurrency bugs, but it finally clicked, and it was well worth the trouble!
+What began as a throwaway toy project quickly turned into my main focus and obsession for my resume.  
+This is my first proper **C++ BitTorrent client**, built from scratch.
 
-Features:
--> A custom built BEncode parser with minimal copying
--> Fully asynchronous HTTPS/UDP trackers (I plan to add HTTP in the future) with decent error handling and retries
--> Follows the BitTorrent spec and respects reannounce timers
--> Peer connection pool supporting both IPv4 & IPv6 peers
--> Asynchronous peer networking, but no uploads yet
--> Centralised piece picker 
--> Low memory usage 
--> File writer thread to keep network i/o separate from disc i/o
--> Minimalistic web UI
--> supports multiple torrents
--> performs well on bad networks, I got decent speeds of 6-7 MB/s on a mobile hotspot
+After building one too many weather scrapers, CRUD apps, and e-commerce demos, I wanted to create something **low-level, performance-critical, and actually useful** in my daily life.
 
-Standouts:
--> BEncode parser is copy-free
--> The entire project has just one lock, that too in a file writer thread 
--> Piece concurrency on several hundred peers was a nightmare to get right, but it finally works
--> exclusively uses coroutines-based Boost.ASIO and asio-strands for concurrency
+I reused some ideas from an older prototype, rewrote large parts of it, and spent weeks debugging the hardest class of bugs there is: **async, memory-lifetime, and concurrency issues**.  
+Eventually it all clicked — and it was absolutely worth it.
 
-Libraries used:
-Boost.ASIO, Boost.Beast, Boost.Endian, Boost.URL, OpenSSL/SHA1
+---
 
-Why did I make this?
-C++ is hard, async networking is hard, concurrency, multithreading is hard. I like hard stuff.
-I wanted to get good at low-level systems programming.
+## Features
 
-TODOs:
-Endgame mode
-HTTP trackers
-Fast resume feature
-Persistence across shutdowns
+- Custom **BEncode parser** with minimal copying
+- Fully asynchronous **HTTPS and UDP trackers** (HTTP planned)
+- Follows the BitTorrent specification and respects re-announce timers
+- Peer connection pool supporting **IPv4 and IPv6**
+- Fully asynchronous peer networking (downloads only, uploads planned)
+- Centralized piece picker
+- Low memory usage
+- Dedicated file writer thread to keep **disk I/O separate from network I/O**
+- Minimalistic web UI
+- Supports multiple torrents
+- Performs well on unreliable networks  
+  *(~6–7 MB/s on a mobile hotspot)*
+
+---
+
+## Standout Design Decisions
+
+- **Copy-free BEncode parser**
+- The entire project uses **only one mutex**, confined to the file writer thread
+- Piece selection and concurrency across hundreds of peers was painful to get right — but it works
+- Uses **coroutine-based Boost.Asio** with **asio strands** for concurrency instead of callbacks
+
+---
+
+## Libraries Used
+
+- Boost.Asio  
+- Boost.Beast  
+- Boost.Endian  
+- Boost.URL  
+- OpenSSL (SHA-1)
+
+---
+
+## Why Did I Build This?
+
+C++ is hard.  
+Async networking is hard.  
+Concurrency and multithreading are hard.
+
+I like hard problems.
+
+This project was an excuse to go deep into **low-level systems programming**, networking, async design, and performance — and to build something real instead of another demo app.
+
+---
+
+## TODO
+
+- Endgame mode
+- HTTP trackers
+- Fast resume
+- Persistence across shutdowns
+- Upload support
