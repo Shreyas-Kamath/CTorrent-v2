@@ -6,7 +6,7 @@ This is my first proper **C++ BitTorrent client**, built from scratch.
 After building one too many weather scrapers, CRUD apps, and e-commerce demos, I wanted to create something **low-level, performance-critical, and actually useful** in my daily life.
 
 I reused some ideas from an older prototype, rewrote large parts of it, and spent weeks debugging the hardest class of bugs there is: **async, memory-lifetime, and concurrency issues**.  
-Eventually it all clicked — and it was absolutely worth it.
+Eventually it all clicked, and it was absolutely worth it.
 
 ---
 
@@ -54,7 +54,7 @@ Concurrency and multithreading are hard.
 
 I like hard problems.
 
-This project was an excuse to go deep into **low-level systems programming**, networking, async design, and performance — and to build something real instead of another demo app.
+This project was an excuse to go deep into **low-level systems programming**, networking, async design, and performance, and to build something real instead of another demo app.
 
 ---
 
