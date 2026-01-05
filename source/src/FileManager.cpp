@@ -23,6 +23,8 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
         std::filesystem::create_directories(f.path.parent_path());
 
         std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
+
+        // preallocate space to prevent disk thrashing
         out.seekp(f.length - 1);
         out.write("", 1);   
     }
