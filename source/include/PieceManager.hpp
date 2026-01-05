@@ -41,7 +41,7 @@ public:
 private:
     std::optional<std::tuple<int, int, int>> next_block_request(const boost::dynamic_bitset<>& peer_bitfield);
     void add_block(uint32_t piece, uint32_t begin, std::span<const unsigned char> block);
-    bool endgame_required();
+    inline bool endgame_required() const;
     void set_my_bitfield(uint32_t piece);
     void return_block(uint32_t piece, uint32_t begin);
     std::vector<uint8_t> fetch_my_bitset() const;

@@ -151,8 +151,9 @@ bool PieceManager::is_complete() const {
     return _completed_pieces == _num_pieces;
 }
 
-bool PieceManager::endgame_required() {
-    return _num_pieces - _completed_pieces <= 10;
+inline bool PieceManager::endgame_required() const {
+    auto progress = static_cast<double>(_completed_pieces) / _num_pieces * 100.0;
+    return progress >= 95;
 }
 
 // return piece_index, offset, length, or nullopt, if nothing
