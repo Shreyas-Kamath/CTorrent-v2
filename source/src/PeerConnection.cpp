@@ -1,0 +1,430 @@
+#include "PeerConnection.hpp"
+#include "PieceManager.hpp"
+
+#include <iostream>
+#include <span>
+#include <print>
+
+boost::asio::awaitable<void> PeerConnection::start() {
+    boost::asio::ip::tcp::endpoint endpoint(p.addr(), p.port());
+    boost::system::error_code ec;
+
+    co_await _socket.async_connect(endpoint, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+    // most likely a dead / saturated / firewalled peer
+    if (ec) { 
+        co_await stop();
+        co_return;
+    }
+
+    co_await handshake();
+    co_await send_bitfield();
+
+    // indicate interest immediately
+    // bittorrent allows this
+    if (!am_interested) {
+        co_await send_interested();
+        am_interested = true;
+    }
+
+    auto self = shared_from_this();
+    boost::asio::co_spawn(
+        _ioc,
+        [self]() -> boost::asio::awaitable<void> {
+            co_await self->watchdog();
+        },
+        boost::asio::detached
+    );
+    co_await message_loop();
+}
+
+// kill connection and signal to client that we wish to remove it
+// we also clean up all its blocks, if any
+boost::asio::awaitable<void> PeerConnection::stop() {
+    if (stopped) co_return;
+    stopped = true;
+
+    boost::system::error_code ec;
+    block_timeout_timer.cancel();
+
+    _socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+    _socket.close(ec);
+}
+
+// protocol
+void PeerConnection::build_handshake() {
+    _handshake_buf[0] = 19;
+
+    std::memcpy(&_handshake_buf[1], "BitTorrent protocol", 19);
+    std::memset(&_handshake_buf[20], 0, 8);
+    std::memcpy(&_handshake_buf[28], _info_hash.data(), 20);
+    std::memcpy(&_handshake_buf[48], _peer_id.data(), 20);
+}
+
+// build handshake, send, then verify response
+boost::asio::awaitable<void> PeerConnection::handshake() {
+    build_handshake();
+
+    boost::system::error_code ec;
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+        
+    // bad connection
+    if (ec) {
+        co_await stop();
+        co_return;
+    }
+
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(_handshake_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+    // no errors allowed during handshake
+    if (ec) {
+        co_await stop();
+        co_return;
+    }
+
+    // bad peer or poor network
+    if (!validate_handshake()) {
+        // std::cout << "Handshake failed with peer " << p.ip();
+        co_await stop();
+        co_return;
+    }
+}
+
+boost::asio::awaitable<void> PeerConnection::send_bitfield() {
+    auto my_bitfield = co_await _pm.async_fetch_my_bitset();
+
+    uint32_t len = boost::endian::native_to_big(1 + static_cast<uint32_t>(my_bitfield.size()));
+
+    std::vector<uint8_t> msg; msg.reserve(4 + 1 + my_bitfield.size());
+
+    msg.insert(msg.end(), reinterpret_cast<uint8_t*>(&len), reinterpret_cast<uint8_t*>(&len) + 4);
+    msg.push_back(static_cast<uint8_t>(Message_ID::Bitfield));
+    msg.insert(msg.end(), my_bitfield.begin(), my_bitfield.end());
+
+    boost::system::error_code ec;
+    boost::asio::async_write(_socket, boost::asio::buffer(msg), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+}
+
+// check if the incoming handshake is valid
+bool PeerConnection::validate_handshake() {
+
+    const unsigned char* incoming_info_hash = _handshake_buf.data() + 28;
+    if (std::equal(_info_hash.begin(), _info_hash.end(), incoming_info_hash, incoming_info_hash + 20)) {
+        const unsigned char* peer_id = _handshake_buf.data() + 48;
+
+        p.id() = decode_peer_id(std::string_view(reinterpret_cast<const char*>(peer_id), 20));
+        return true;
+    }
+    return false;
+}
+
+std::string PeerConnection::decode_peer_id(std::string_view pid) {
+    if (pid.size() != 20)
+        return "Unknown";
+
+    // Azureus-style: -XXYYYY-
+    if (pid[0] == '-' && pid[7] == '-') {
+        std::string_view code = pid.substr(1, 2);
+        std::string_view ver  = pid.substr(3, 4);
+
+        auto format_ver = [](std::string_view v) {
+            return std::format("{}.{}.{}", v[0], v[1], v[2]);
+        };
+
+        if (code == "qB") return "qBittorrent "  + format_ver(ver);
+        if (code == "TR") return "Transmission " + format_ver(ver);
+        if (code == "UT") return "µTorrent "     + format_ver(ver);
+        if (code == "LT") return "libtorrent "   + format_ver(ver);
+        if (code == "AZ") return "Azureus "      + format_ver(ver);
+    }
+    return "Unknown";
+}
+
+// helpers
+boost::asio::awaitable<std::optional<uint32_t>> PeerConnection::read_u32_be() {
+    std::array<char, 4> length_buf{};
+
+    boost::system::error_code ec;
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+    if (ec) {
+        co_await stop();
+        co_return std::nullopt;
+    }
+
+    uint32_t len;
+    std::memcpy(&len, length_buf.data(), 4);
+    boost::endian::big_to_native_inplace(len);
+    co_return len;
+}
+
+boost::asio::awaitable<std::optional<uint8_t>> PeerConnection::read_u8() {
+    uint8_t id;
+
+    boost::system::error_code ec;
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(&id, 1), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+    if (ec) {
+        co_await stop();
+        co_return std::nullopt;
+    }
+
+    co_return id;
+}
+
+// modify bitfield when peer sends theirs
+void PeerConnection::handle_bitfield() {
+    size_t bit_index{};
+
+    for (auto byte: _msg_buf) {
+        for (int i{7}; i >= 0; --i) {
+            if (bit_index >= _peer_bitfield.size()) return;
+
+            bool has_piece = (byte >> i) & 1;
+            _peer_bitfield.set(bit_index, has_piece);
+            if (has_piece) ++completed_pieces;
+            ++bit_index;
+        }
+    }
+}
+
+// modify bitfield when peer sends a HAVE
+void PeerConnection::handle_have() {
+    uint32_t index;
+    std::memcpy(&index, _msg_buf.data(), 4);
+    boost::endian::big_to_native_inplace(index);
+
+    if (index < _peer_bitfield.size() && !_peer_bitfield.test(index)) {
+        _peer_bitfield.set(index);
+        ++completed_pieces;
+    }
+}
+
+boost::asio::awaitable<void> PeerConnection::maybe_request_next() {
+    while (!am_choked && _in_flight < MAX_IN_FLIGHT) {
+        auto req = co_await _pm.async_next_block_request(_peer_bitfield);
+        if (!req) break;
+
+        auto [piece, offset, length] = req.value();
+        co_await send_request(piece, offset, length);
+    }
+    co_return;
+}
+
+// handle incoming piece
+boost::asio::awaitable<void> PeerConnection::handle_piece() {
+    if (_msg_buf.size() < 8) co_return;
+
+    uint32_t piece, begin;
+    std::memcpy(&piece, _msg_buf.data(), 4);
+    std::memcpy(&begin, _msg_buf.data() + 4, 4);
+
+    boost::endian::big_to_native_inplace(piece);
+    boost::endian::big_to_native_inplace(begin);
+
+    auto pos = std::ranges::find_if(in_flight_blocks,
+        [piece, begin](const InFlight& inflight) {
+            return inflight.piece == piece && inflight.begin == begin;
+        }
+    );
+
+    if (pos != in_flight_blocks.end()) {
+        *pos = in_flight_blocks.back();
+        in_flight_blocks.pop_back();
+        --_in_flight;
+    }
+
+    // std::println("Received a block from ", p.ip());
+
+    auto block = std::span<const unsigned char>(_msg_buf).subspan(8);
+    co_await _pm.async_add_block(piece, begin, block);
+}
+
+// indicate interest to the peer
+boost::asio::awaitable<void> PeerConnection::send_interested() {
+    uint32_t len{1};
+    boost::endian::native_to_big_inplace(len);
+    std::memcpy(_interested_buf.data(), &len, 4);
+    _interested_buf[4] = static_cast<unsigned char>(Message_ID::Interested);
+
+    boost::system::error_code ec;
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(_interested_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+}
+
+// ask for a piece
+boost::asio::awaitable<void> PeerConnection::send_request(int piece_index, int begin, int length) {
+    std::array<char, 17> request_buf{};
+
+    uint32_t len = 13;
+    boost::endian::native_to_big_inplace(len);
+    std::memcpy(request_buf.data(), &len, 4);
+
+    request_buf[4] = static_cast<unsigned char>(Message_ID::Request);
+
+    uint32_t be_piece_index = boost::endian::native_to_big<uint32_t>(piece_index);
+    std::memcpy(request_buf.data() + 5, &be_piece_index, 4);
+
+    uint32_t be_begin = boost::endian::native_to_big<uint32_t>(begin);
+    std::memcpy(request_buf.data() + 9, &be_begin, 4);
+    
+    uint32_t be_length = boost::endian::native_to_big<uint32_t>(length);   
+    std::memcpy(request_buf.data() + 13, &be_length, 4);
+
+    ++_in_flight;
+    in_flight_blocks.emplace_back(piece_index, begin, length, std::chrono::steady_clock::now());
+
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(request_buf), boost::asio::bind_executor(write_strand, boost::asio::use_awaitable));
+    // std::println("{} is requesting piece {}, block {}", p.ip(), piece_index, begin / 16384);
+}
+
+boost::asio::awaitable<void> PeerConnection::send_cancel(uint32_t piece_index, uint32_t begin, uint32_t length) {
+    std::array<char, 17> cancel_buf{};
+
+    uint32_t msg_len = 13;
+    boost::endian::native_to_big_inplace(msg_len);
+
+    std::memcpy(cancel_buf.data(), &msg_len, 4);
+
+    cancel_buf[4] = static_cast<unsigned char>(Message_ID::Cancel);
+
+    auto be_piece = boost::endian::native_to_big(piece_index);
+    auto be_begin = boost::endian::native_to_big(begin);
+    auto be_length = boost::endian::native_to_big(length);
+
+    std::memcpy(cancel_buf.data() + 5, &be_piece, 4);
+    std::memcpy(cancel_buf.data() + 9, &be_begin, 4);
+    std::memcpy(cancel_buf.data() + 13, &be_length, 4);
+
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(cancel_buf), boost::asio::bind_executor(write_strand, boost::asio::use_awaitable));
+}
+
+void PeerConnection::handle_message(Message_ID id) {
+    switch (id)
+    {
+    case Message_ID::Interested:
+        // std::cout << "Peer is interested\n";
+        break;
+    case Message_ID::NotInterested:
+        // std::cout << "Peer isn't interested\n";
+        break;
+    case Message_ID::Request:
+        // std::cout << "Peer sent a request\n";
+        break;
+    case Message_ID::Cancel:
+        // std::cout << "Peer sent cancel\n";
+        break;
+    case Message_ID::Port:
+        // std::cout << "Peer sent port\n";
+        break;
+    default:
+        break;
+    }
+}
+
+// end helpers
+
+boost::asio::awaitable<void> PeerConnection::message_loop() {
+        while (_socket.is_open()) {
+            auto len = co_await read_u32_be();
+            if (!len) co_return;
+            if (len.value() == 0) continue;
+
+            auto msg_id = co_await read_u8();
+            if (!msg_id) co_return;
+            auto id = static_cast<Message_ID>(msg_id.value());
+
+            _msg_buf.resize(len.value() - 1);
+
+            boost::system::error_code ec;
+            co_await boost::asio::async_read(_socket, boost::asio::buffer(_msg_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+            if (ec) {
+                co_await stop();
+                co_return;
+            } 
+
+            switch (id) {
+                    case Message_ID::Choke:
+                    // std::cout << "Peer choked us\n";
+                    am_choked = true;
+
+                    for (auto& block: in_flight_blocks) co_await _pm.async_return_block(block.piece, block.begin);
+                    in_flight_blocks.clear();
+                    _in_flight = 0;
+                    break;
+
+                case Message_ID::Unchoke:
+                    am_choked = false;
+                    if (am_interested) co_await maybe_request_next();
+                    break;
+
+                case Message_ID::Piece:
+                    co_await handle_piece();
+                    co_await maybe_request_next();
+                    break;
+
+                case Message_ID::Have:
+                    // std::cout << "Peer sent have\n";
+                    handle_have();
+                    if (!am_interested) {
+                        co_await send_interested();
+                        am_interested = true;
+                    }
+                    // try requesting if unchoked
+                    // co_await maybe_request_next();
+                    break;
+
+                case Message_ID::Bitfield:
+                    handle_bitfield();
+                    if (!am_interested) {
+                        co_await send_interested();
+                        am_interested = true;
+                    }
+                    // co_await maybe_request_next();
+                    break;      
+
+                default:
+                    handle_message(id);
+                    break;
+            }
+        }
+}
+
+boost::asio::awaitable<void> PeerConnection::watchdog() {
+    boost::system::error_code ec;
+
+    while (!stopped) {
+        block_timeout_timer.expires_after(std::chrono::seconds(1));
+
+        co_await block_timeout_timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+        if (stopped || ec) break;
+
+        auto now = std::chrono::steady_clock::now();
+
+        for (size_t i = 0; i < in_flight_blocks.size();) {
+            auto& curr = in_flight_blocks[i];
+
+            if (now - curr.sent_at >= REQUEST_TIMEOUT) {
+                co_await _pm.async_return_block(curr.piece, curr.begin);
+
+                in_flight_blocks[i] = in_flight_blocks.back();
+                in_flight_blocks.pop_back();
+
+                if (_in_flight > 0) --_in_flight;
+            } else ++i;
+        }
+
+        // == 0?
+        if (!am_choked && am_interested && _in_flight < MAX_IN_FLIGHT) co_await maybe_request_next();
+    }
+
+    // last pass to clear blocks after stopped
+    for (auto& block: in_flight_blocks) co_await _pm.async_return_block(block.piece, block.begin);
+
+    in_flight_blocks.clear();
+    _in_flight = 0;
+
+    co_return;
+}
+
