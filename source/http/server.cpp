@@ -123,24 +123,20 @@ void HttpServer::handle_static(const http::request<http::dynamic_body>& req,
 void HttpServer::handle_api(const http::request<http::dynamic_body>& req, 
                             http::response<http::string_body>& res) {
 
-    if (req.method() == http::verb::post && req.target() == "/api/torrents/add") {
-        return handle_add_torrent(req, res);
-    }
-    if (req.method() == http::verb::get && req.target() == "/api/torrents") {
-        return fetch_torrents_info(req, res);
-    }
+    auto args = req.target() | std::views::split('/') | std::ranges::to<std::vector<std::string>>();
 
-    auto vec = req.target() | std::views::split('/') | std::ranges::to<std::vector<std::string>>();
-
-    if (req.method() == http::verb::get && vec.back() == "peers") {
-        return fetch_peers_info(req, res, vec[3]); // hash
+    if (req.method() == http::verb::post) {
+        if (req.target() == "/api/torrents/add") return handle_add_torrent(req, res);
+        // if (args.back() == "remove") return handle_delete_torrent(req, res, args[3]);
     }
 
-    if (req.method() == http::verb::get && vec.back() == "trackers") {
-        return fetch_trackers_info(req, res, vec[3]); // hash
+    if (req.method() == http::verb::get) {
+        if (req.target() == "/api/torrents") return fetch_torrents_info(req, res);
+        if (args.back() == "peers") return fetch_peers_info(req, res, args[3]); // hash
+        if (args.back() == "trackers") return fetch_trackers_info(req, res, args[3]); // hash
     }
 
-    std::println("{}", vec);
+    std::println("{}", args);
 
     res.result(http::status::not_found);
     res.body() = R"({"status":"error","message":"Unknown API endpoint"})";

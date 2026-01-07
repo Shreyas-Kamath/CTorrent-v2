@@ -42,4 +42,5 @@ target_link_libraries(
     Boost::beast
     Boost::json
     Boost::url
+    iphlpapi
 )
