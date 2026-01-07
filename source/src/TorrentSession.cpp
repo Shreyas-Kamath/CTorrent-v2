@@ -12,13 +12,14 @@
 
 const std::string_view& TorrentSession::name() const { return _metadata.name; }
 
-TorrentSession::TorrentSession(boost::asio::io_context& ioc, Metadata&& md): 
+TorrentSession::TorrentSession(boost::asio::io_context& ioc, Metadata&& md, std::optional<std::string> ipv6): 
     _ioc{ioc}, 
     _metadata(std::move(md)),
     _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length),
-    _pm(_ioc, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm)
+    _pm(_ioc, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm),
+    my_ipv6(ipv6)
     {
-        build_tracker_list();
+        build_tracker_list(my_ipv6);
     }
 
 void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
@@ -93,13 +94,13 @@ boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
     }
 }
 
-void TorrentSession::build_tracker_list() {
+void TorrentSession::build_tracker_list(std::optional<std::string> ipv6) {
     std::unordered_set<std::string_view> seen;
     
     auto add = [&](std::string_view url) {
         if (!url.empty() && !seen.contains(url)) {
             seen.insert(url);
-            _tracker_list.emplace_back(make_tracker(_ioc, url, _metadata.info_hash), _ioc);
+            _tracker_list.emplace_back(make_tracker(_ioc, url, _metadata.info_hash, ipv6), _ioc);
         }
     };
 

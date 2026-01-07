@@ -24,8 +24,8 @@ struct TrackerResponse {
 
 class BaseTracker {
 public:
-    BaseTracker(boost::asio::io_context& io, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash)
-        : _io(io), _raw_url(tracker_url), _info_hash(info_hash)
+    BaseTracker(boost::asio::io_context& io, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash, std::optional<std::string> ipv6)
+        : _io(io), _raw_url(tracker_url), _info_hash(info_hash), my_ipv6(ipv6)
     {
         auto rv = boost::urls::parse_uri(_raw_url);
         if (!rv)
@@ -64,6 +64,7 @@ protected:
     std::string      _host;
     uint16_t         _port;
     std::string      _path;
+    std::optional<std::string> my_ipv6;
 
     const std::array<unsigned char, 20>& _info_hash;
 };

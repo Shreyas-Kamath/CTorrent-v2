@@ -8,6 +8,8 @@
 #include <Windows.h>
 #endif
 
+#include "Utils.hpp"
+
 Client::Client() = default;
 
 void Client::run() {
@@ -43,8 +45,11 @@ AddTorrentResult Client::add_torrent(const std::vector<char>& data) {
 
     if (_sessions.contains(hash)) return { hash, std::string(md.name), false, "Torrent already exists" };
 
+    // detect ipv6
+    auto ipv6 = detect_ipv6_address();
+
     // spawn a session
-    auto session = std::make_unique<TorrentSession>(_ioc, std::move(md));
+    auto session = std::make_unique<TorrentSession>(_ioc, std::move(md), ipv6);
 
     session->start();
 
