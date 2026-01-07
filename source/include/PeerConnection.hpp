@@ -93,6 +93,9 @@ private:
     std::vector<InFlight> in_flight_blocks;
     boost::asio::io_context& _ioc;
 
+    std::chrono::steady_clock::time_point last_unchoked;
+    std::chrono::steady_clock::time_point last_received;
+    
     bool am_interested = false;
     bool am_choked = true;
 

@@ -18,6 +18,9 @@ boost::asio::awaitable<void> PeerConnection::start() {
     }
 
     co_await handshake();
+
+    last_received = std::chrono::steady_clock::now();
+
     co_await send_bitfield();
 
     // indicate interest immediately
@@ -326,6 +329,9 @@ void PeerConnection::handle_message(Message_ID id) {
 boost::asio::awaitable<void> PeerConnection::message_loop() {
         while (_socket.is_open()) {
             auto len = co_await read_u32_be();
+
+            last_received = std::chrono::steady_clock::now();
+            
             if (!len) co_return;
             if (len.value() == 0) continue;
 
@@ -355,6 +361,7 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
 
                 case Message_ID::Unchoke:
                     am_choked = false;
+                    last_unchoked = std::chrono::steady_clock::now();
                     if (am_interested) co_await maybe_request_next();
                     break;
 
@@ -401,6 +408,13 @@ boost::asio::awaitable<void> PeerConnection::watchdog() {
         if (stopped || ec) break;
 
         auto now = std::chrono::steady_clock::now();
+
+        if (am_choked) {
+            if (now - last_received > std::chrono::minutes(2) && now - last_unchoked > std::chrono::minutes(2)) {
+                co_await stop();
+                co_return;
+            }
+        }
 
         for (size_t i = 0; i < in_flight_blocks.size();) {
             auto& curr = in_flight_blocks[i];
