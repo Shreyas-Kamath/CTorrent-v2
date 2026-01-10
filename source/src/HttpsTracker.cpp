@@ -99,13 +99,14 @@ TrackerResponse HttpsTracker::parse_peers(const std::string& body) {
                 const auto& d = p.as_dict();
 
                 auto ip   = d.at("ip").as_string();
+                auto addr = boost::asio::ip::make_address_v4(ip);
 
                 std::string id = "";
                 if (d.contains("peer id")) id = d.at("peer id").as_string();
 
                 auto port = d.at("port").as_int();
 
-                out.peers.emplace_back(ip, (int)port, id);
+                out.peers.emplace_back(addr, (int)port, id);
             }
         }
 

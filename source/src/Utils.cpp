@@ -40,7 +40,7 @@ bool is_good_ipv6(const IN6_ADDR& addr) {
     return false;
 }
 
-std::optional<std::string> detect_ipv6_address() {
+std::optional<boost::asio::ip::address_v6> detect_ipv6_address() {
 	ULONG size = 0;
 	GetAdaptersAddresses(AF_INET6, 0, nullptr, nullptr, &size);
 
@@ -63,7 +63,7 @@ std::optional<std::string> detect_ipv6_address() {
 
 			if (!InetNtopA(AF_INET6, &sa->sin6_addr, str, sizeof(str))) continue;
 
-			return std::string(str);
+			return boost::asio::ip::make_address_v6(str);
 		}
 	}
 

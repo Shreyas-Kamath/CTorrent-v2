@@ -150,7 +150,7 @@ std::vector<PeerSnapshot> TorrentSession::peer_snapshots() const {
     for (const auto& conn: _peer_connections) {
         PeerSnapshot ps;
 
-        ps.ip = conn->peer().ip();
+        ps.ip = conn->peer().addr().to_string();
         ps.name = conn->peer().id();
         ps.progress = conn->progress();
         ps.requests = conn->requests();

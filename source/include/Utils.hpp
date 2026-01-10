@@ -9,6 +9,8 @@
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 
+#include <boost/asio/ip/address_v6.hpp>
+
 std::string read_from_file(const std::string& path);
-std::optional<std::string> detect_ipv6_address();
+std::optional<boost::asio::ip::address_v6> detect_ipv6_address();
 bool is_good_ipv6(const IN6_ADDR& addr);
