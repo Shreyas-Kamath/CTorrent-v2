@@ -28,11 +28,13 @@ public:
 
     [[nodiscard]] boost::asio::awaitable<void> start();
     [[nodiscard]] boost::asio::awaitable<void> stop();
+    [[nodiscard]] boost::asio::awaitable<void> send_have(uint32_t piece);
 
     double progress() const { return (double)completed_pieces * 100.0 / _num_pieces; }
     int requests() const { return _in_flight; }
     bool choked() const { return am_choked; }
     bool interested() const { return am_interested; }
+    bool is_stopped() const { return stopped; }
 
 private:
 
@@ -41,6 +43,13 @@ private:
         NotInterested, Have, Bitfield,
         Request, Piece, Cancel, Port
     };
+
+    struct ParsedRequest {
+        uint32_t piece, begin, length;
+    };
+
+    std::optional<ParsedRequest> parse_request() const;
+    bool is_valid_upload_request(const ParsedRequest& r) const;
 
     struct InFlight {
         uint32_t piece, begin, length;
@@ -63,12 +72,14 @@ private:
     [[nodiscard]] boost::asio::awaitable<void> send_interested();
     [[nodiscard]] boost::asio::awaitable<void> send_request(int piece_index, int begin, int length);
     [[nodiscard]] boost::asio::awaitable<void> send_cancel(uint32_t piece_index, uint32_t begin, uint32_t length);
+    [[nodiscard]] boost::asio::awaitable<void> send_unchoke();
 
     void handle_message(Message_ID id);
     void handle_bitfield();
     void handle_have();
     [[nodiscard]] boost::asio::awaitable<void> maybe_request_next();
     [[nodiscard]] boost::asio::awaitable<void> handle_piece();
+    [[nodiscard]] boost::asio::awaitable<void> handle_request();
 
     // buffers
     std::array<unsigned char, 5> _interested_buf;
@@ -98,6 +109,9 @@ private:
     
     bool am_interested = false;
     bool am_choked = true;
+
+    bool peer_choked = true;
+    bool peer_interested = false;
 
     PieceManager& _pm;
 

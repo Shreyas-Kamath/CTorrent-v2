@@ -12,14 +12,13 @@
 
 const std::string_view& TorrentSession::name() const { return _metadata.name; }
 
-TorrentSession::TorrentSession(boost::asio::io_context& ioc, Metadata&& md, std::optional<std::string> ipv6): 
+TorrentSession::TorrentSession(boost::asio::io_context& ioc, Metadata&& md): 
     _ioc{ioc}, 
     _metadata(std::move(md)),
-    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length),
-    _pm(_ioc, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm),
-    my_ipv6(ipv6)
+    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length, _ioc.get_executor()),
+    _pm(_ioc, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { broadcast_have(piece); })
     {
-        build_tracker_list(my_ipv6);
+        build_tracker_list();
     }
 
 void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
@@ -61,6 +60,19 @@ boost::asio::awaitable<void> TorrentSession::remove_peer(std::shared_ptr<PeerCon
     std::erase(_peer_connections, peer);
 }
 
+void TorrentSession::broadcast_have(uint32_t piece) {
+    for (auto& peer: _peer_connections) {
+
+        if (!peer || peer->is_stopped()) continue;
+
+        boost::asio::co_spawn(
+            _ioc,
+            peer->send_have(piece),
+            boost::asio::detached
+        );
+    }
+}
+
 boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
     while (!_stopped) {
         try {
@@ -94,13 +106,13 @@ boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
     }
 }
 
-void TorrentSession::build_tracker_list(std::optional<std::string> ipv6) {
+void TorrentSession::build_tracker_list() {
     std::unordered_set<std::string_view> seen;
     
     auto add = [&](std::string_view url) {
         if (!url.empty() && !seen.contains(url)) {
             seen.insert(url);
-            _tracker_list.emplace_back(make_tracker(_ioc, url, _metadata.info_hash, ipv6), _ioc);
+            _tracker_list.emplace_back(make_tracker(_ioc, url, _metadata.info_hash), _ioc);
         }
     };
 

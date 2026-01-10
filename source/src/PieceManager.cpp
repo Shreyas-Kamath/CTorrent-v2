@@ -26,6 +26,22 @@ boost::asio::awaitable<std::vector<uint8_t>> PieceManager::async_fetch_my_bitset
     co_return fetch_my_bitset();
 }
 
+boost::asio::awaitable<std::optional<std::vector<unsigned char>>> PieceManager::async_fetch_block(uint32_t piece, uint32_t begin, uint32_t length) {
+    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
+    // fetch from fm
+
+    auto data = co_await await_callback<std::optional<std::vector<unsigned char>>>(
+        [&](auto resume) {
+            _fm.enqueue_read_block(piece, begin, length,
+                [resume = std::move(resume)](auto result) mutable {
+                    resume(std::move(result));
+                }
+            );
+    });
+
+    co_return data;
+}
+
 std::vector<uint8_t> PieceManager::fetch_my_bitset() const {
     return _my_bitfield;
 }
@@ -61,22 +77,11 @@ void PieceManager::add_block(uint32_t piece, uint32_t begin, std::span<const uns
     auto& curr_piece = _pieces[piece];
     auto block_index = begin / 16384;
 
-    if (curr_piece.is_complete) {
-        // std::println("piece is complete: piece {}, block {}", piece, block_index);
-        return;
-    }
-
-    if (block_index >= curr_piece.block_status.size()) {
-        // std::println("Piece {}, block {} is out of bounds", piece, block_index);
-        return;
-    }
+    if (curr_piece.is_complete) return;
+    if (block_index >= curr_piece.block_status.size()) return;
 
     auto& curr_block_status = curr_piece.block_status[block_index];
-
-    if (curr_block_status == BlockState::Received) {
-        // std::println("Piece {}, block {} already received", piece, block_index);
-        return;
-    }
+    if (curr_block_status == BlockState::Received) return;
 
     curr_block_status = BlockState::Received;
     ++curr_piece.blocks_received;
@@ -91,7 +96,7 @@ void PieceManager::add_block(uint32_t piece, uint32_t begin, std::span<const uns
 
             // mark as complete in my bitfield
             set_my_bitfield(piece);
-
+            _piece_complete_callback(piece);
             ++_completed_pieces;
 
             downloaded += curr_piece.data.size();
@@ -149,6 +154,10 @@ uint64_t PieceManager::total_bytes() const {
 
 bool PieceManager::is_complete() const {
     return _completed_pieces == _num_pieces;
+}
+
+bool PieceManager::is_piece_complete(uint32_t piece) const {
+    return _pieces[piece].is_complete;
 }
 
 inline bool PieceManager::endgame_required() const {
@@ -229,3 +238,9 @@ std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const 
 
     return std::nullopt;
 }
+
+// bool PieceManager::should_be_interested(std::optional<uint32_t> piece = std::nullopt) {
+//     if (piece) {
+//         if (!)
+//     }
+// } 

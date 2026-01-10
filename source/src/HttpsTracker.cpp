@@ -15,7 +15,7 @@ boost::urls::url HttpsTracker::build_announce(const std::string& peer_id, uint64
         {"compact", "1"}
     });
 
-    if (my_ipv6.has_value()) announce_url.params().set("ipv6", my_ipv6.value());
+    // if (my_ipv6.has_value()) announce_url.params().set("ipv6", my_ipv6.value());
     if (downloaded == 0) announce_url.params().set("event", "started");
 
     return announce_url;

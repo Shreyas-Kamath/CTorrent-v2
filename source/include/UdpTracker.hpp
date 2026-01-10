@@ -11,7 +11,7 @@ using udp = net::ip::udp;
 
 class UdpTracker: public BaseTracker {
 public:
-    UdpTracker(boost::asio::io_context& ioc, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash, std::optional<std::string> ipv6): BaseTracker(ioc, tracker_url, info_hash, ipv6), _socket(_io) 
+    UdpTracker(boost::asio::io_context& ioc, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash): BaseTracker(ioc, tracker_url, info_hash), _socket(_io) 
     {}
 
     boost::asio::awaitable<TrackerResponse> async_announce(const std::string& peer_id, uint64_t downloaded, uint64_t uploaded, uint64_t total) override; 

@@ -19,7 +19,7 @@ struct TrackerSnapshot;
 
 class TorrentSession {
 public:
-    TorrentSession(boost::asio::io_context& ioc, Metadata&& md, std::optional<std::string> ipv6);
+    TorrentSession(boost::asio::io_context& ioc, Metadata&& md);
 
     const std::string_view& name() const;
 
@@ -32,6 +32,7 @@ public:
     std::vector<TrackerSnapshot> tracker_snapshots() const;
 private:
     boost::asio::awaitable<void> remove_peer(std::shared_ptr<PeerConnection>);
+    void broadcast_have(uint32_t piece);
 
     struct TrackerStats {
         std::chrono::steady_clock::time_point next_announce;
@@ -65,9 +66,8 @@ private:
     PieceManager _pm;
     FileManager _fm;
 
-    void build_tracker_list(std::optional<std::string> ipv6);
+    void build_tracker_list();
     void on_tracker_response(const TrackerResponse& resp);
 
     std::vector<std::shared_ptr<PeerConnection>> _peer_connections;
-    std::optional<std::string> my_ipv6;
 };
