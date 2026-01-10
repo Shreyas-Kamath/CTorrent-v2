@@ -14,6 +14,7 @@ Client::Client() = default;
 
 void Client::run() {
     detect_network_capabilities();
+    start_acceptors();
 
     auto exe_dir  = get_exe_dir();
     auto doc_root = compute_doc_root();
@@ -87,6 +88,51 @@ void Client::detect_network_capabilities() {
     std::println("ipv6 inbound: {}", nc.ipv6_inbound);
 }
 
+void Client::start_acceptors() {
+    using tcp = boost::asio::ip::tcp;
+    boost::system::error_code ec;
+
+    if (nc.ipv4_inbound) {
+        v4_acceptor = std::make_unique<tcp::acceptor>(_ioc);
+        v4_acceptor->open(tcp::v4(), ec);
+
+        if (!ec) {
+            v4_acceptor->bind({tcp::v4(), listen_port}, ec);
+            if (!ec) v4_acceptor->listen(50, ec);
+        }
+    }
+
+    if (ec) {
+        std::println("ipv4 acceptor failed: {}", ec.message());
+        v4_acceptor.reset();
+    }
+    else {
+        std::println("ipv4 acceptor is listening on {}", listen_port);
+        boost::asio::co_spawn(_ioc, accept_loop_v4(), boost::asio::detached);
+    }
+
+    ec.clear();
+
+    if (nc.ipv6_inbound) {
+        v6_acceptor = std::make_unique<tcp::acceptor>(_ioc);
+        v6_acceptor->open(tcp::v6(), ec);
+        v6_acceptor->set_option(boost::asio::ip::v6_only(true), ec);
+        if (!ec) {
+            v6_acceptor->bind({tcp::v6(), listen_port}, ec);
+            if (!ec) v6_acceptor->listen(50, ec);
+        }
+    }
+
+    if (ec) {
+        std::println("ipv6 acceptor failed: {}", ec.message());
+        v6_acceptor.reset();
+    }
+    else {
+        std::println("ipv6 acceptor is listening on {}", listen_port);
+        boost::asio::co_spawn(_ioc, accept_loop_v6(), boost::asio::detached);
+    }
+}
+
 bool Client::can_bind_ipv6() {
     using tcp = boost::asio::ip::tcp;
 
@@ -101,7 +147,7 @@ bool Client::can_bind_ipv6() {
 
     acc.set_option(boost::asio::ip::v6_only(true), ec);
     if (ec) return false;
-    
+
     acc.bind({tcp::v6(), listen_port}, ec);
     if (ec) {
         std::println("Could not bind ipv6 to listen port: {}", ec.message());
@@ -110,4 +156,38 @@ bool Client::can_bind_ipv6() {
 
     acc.close(ec);
     return true;
+}
+
+boost::asio::awaitable<void> Client::accept_loop_v4() {
+    using tcp = boost::asio::ip::tcp;
+
+    while (true) {
+        if (!v4_acceptor || !v4_acceptor->is_open()) co_return;
+        tcp::socket socket(_ioc);
+        
+        boost::system::error_code ec;
+        co_await v4_acceptor->async_accept(socket, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+        if (!ec) {
+            std::println("ipv4 inbound peer: {}", socket.remote_endpoint().address().to_string());
+        }
+
+    }
+}
+
+boost::asio::awaitable<void> Client::accept_loop_v6() {
+    using tcp = boost::asio::ip::tcp;
+
+    while (true) {
+        if (!v6_acceptor || !v6_acceptor->is_open()) co_return;
+        tcp::socket socket(_ioc);
+        
+        boost::system::error_code ec;
+        co_await v6_acceptor->async_accept(socket, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+        if (!ec) {
+            std::println("ipv6 inbound peer: {}", socket.remote_endpoint().address().to_string());
+        }
+
+    }
 }

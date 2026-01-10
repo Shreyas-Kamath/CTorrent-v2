@@ -42,6 +42,13 @@ private:
     std::unordered_map<std::string, std::unique_ptr<TorrentSession>> _sessions;
     void detect_network_capabilities();
     bool can_bind_ipv6();
+    void start_acceptors();
+    boost::asio::awaitable<void> accept_loop_v4();
+    boost::asio::awaitable<void> accept_loop_v6();
+
+    // acceptors
+    std::unique_ptr<boost::asio::ip::tcp::acceptor> v4_acceptor;
+    std::unique_ptr<boost::asio::ip::tcp::acceptor> v6_acceptor;
 
     // helpers
     std::string compute_doc_root() const;
