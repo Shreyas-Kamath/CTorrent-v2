@@ -118,7 +118,10 @@ TrackerResponse HttpsTracker::parse_peers(const std::string& body) {
 
                 const unsigned char* x = reinterpret_cast<const unsigned char*>(&blob[i]);
 
-                auto ip = std::format("{}.{}.{}.{}", x[0], x[1], x[2], x[3]);
+                boost::asio::ip::address_v4::bytes_type bytes {
+                    x[0], x[1], x[2], x[3]
+                };
+                auto ip = boost::asio::ip::make_address_v4(bytes);
                 auto port = (x[4] << 8) | x[5];
 
                 out.peers.emplace_back(ip, (int)port, "");

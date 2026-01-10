@@ -141,7 +141,11 @@
         for (size_t i{20}; i + 6 <= size; i += 6) {
             auto* peer = response_buf.data() + i;
 
-            auto ip = std::format("{}.{}.{}.{}", peer[0], peer[1], peer[2], peer[3]);
+            boost::asio::ip::address_v4::bytes_type bytes {
+                peer[0], peer[1], peer[2], peer[3]
+            };
+            auto ip = boost::asio::ip::make_address_v4(bytes);
+            
             uint16_t port = (peer[4] << 8) | peer[5];
 
             out.peers.emplace_back(ip, port, "");
