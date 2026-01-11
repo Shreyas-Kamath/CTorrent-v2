@@ -19,7 +19,7 @@ struct TrackerSnapshot;
 
 class TorrentSession {
 public:
-    TorrentSession(boost::asio::io_context& ioc, Metadata&& md);
+    TorrentSession(boost::asio::any_io_executor exec, Metadata&& md);
 
     const std::string_view& name() const;
 
@@ -49,15 +49,15 @@ private:
         TrackerStats stats;
         boost::asio::steady_timer timer;
 
-        TrackerState(std::shared_ptr<BaseTracker> t, boost::asio::io_context& ioc)
-            : _tracker_shared_ptr(std::move(t)), timer(ioc) {}
+        TrackerState(std::shared_ptr<BaseTracker> t, boost::asio::any_io_executor exec): _tracker_shared_ptr(std::move(t)), timer(exec) {}
     };
+
 
     bool _stopped = false;
 
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 
-    boost::asio::io_context& _ioc;
+    boost::asio::any_io_executor _exec;
 
     std::string peer_id = "-TR2940-1234567890ab";
     Metadata _metadata;                                     // parsed metadata and raw string

@@ -14,7 +14,7 @@ using tcp = net::ip::tcp;
 
 class HttpsTracker : public BaseTracker {
 public:    
-    HttpsTracker(boost::asio::io_context& ioc, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash): BaseTracker(ioc, tracker_url, info_hash), _ssl_ctx(boost::asio::ssl::context::tlsv12_client) {
+    HttpsTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash): BaseTracker(exec, tracker_url, info_hash), _ssl_ctx(boost::asio::ssl::context::tlsv12_client) {
         _encoded_info_hash.reserve(_info_hash.size() * 3);
 
         for (unsigned char b: _info_hash) {

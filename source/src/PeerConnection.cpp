@@ -30,14 +30,7 @@ boost::asio::awaitable<void> PeerConnection::start() {
     //     am_interested = true;
     // }
 
-    auto self = shared_from_this();
-    boost::asio::co_spawn(
-        _ioc,
-        [self]() -> boost::asio::awaitable<void> {
-            co_await self->watchdog();
-        },
-        boost::asio::detached
-    );
+    boost::asio::co_spawn(_exec, watchdog(), boost::asio::detached);
     co_await message_loop();
 }
 
@@ -424,13 +417,15 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
 
 boost::asio::awaitable<void> PeerConnection::watchdog() {
     boost::system::error_code ec;
-
     while (!stopped) {
-        block_timeout_timer.expires_after(std::chrono::seconds(1));
 
+        block_timeout_timer.expires_after(std::chrono::seconds(1));
         co_await block_timeout_timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
-        if (stopped || ec) break;
+        if (stopped || ec) {
+            ec.clear();
+            break;
+        }
 
         auto now = std::chrono::steady_clock::now();
 

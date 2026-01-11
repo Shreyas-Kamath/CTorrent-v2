@@ -19,8 +19,8 @@ using namespace boost::asio::experimental::awaitable_operators;
 namespace http = boost::beast::http;
 namespace net = boost::asio;
 
-HttpServer::HttpServer(boost::asio::io_context& ioc, unsigned short port, std::string doc_root, Client* client)
-    : _ioc(ioc), _port(port), _doc_root(std::move(doc_root)), _client(client) {}
+HttpServer::HttpServer(boost::asio::any_io_executor exec, unsigned short port, std::string doc_root, Client* client)
+    : _exec(exec), _port(port), _doc_root(std::move(doc_root)), _client(client) {}
 
 // -------------------- utility functions --------------------
 
@@ -253,7 +253,7 @@ void HttpServer::fetch_torrents_info(const http::request<http::dynamic_body>& re
 awaitable<void> HttpServer::accept_loop(tcp::acceptor acceptor) {
     for (;;) {
         tcp::socket socket = co_await acceptor.async_accept(use_awaitable);
-        co_spawn(_ioc, handle_connection(std::move(socket)), detached);
+        co_spawn(_exec, handle_connection(std::move(socket)), detached);
     }
 }
 
@@ -280,8 +280,8 @@ awaitable<void> HttpServer::handle_connection(tcp::socket socket) {
 // -------------------- entry point --------------------
 
 void HttpServer::run() {
-    tcp::acceptor acceptor(_ioc, tcp::endpoint(tcp::v4(), _port));
+    tcp::acceptor acceptor(_exec, tcp::endpoint(tcp::v4(), _port));
     std::println("Running at http://localhost:{}", _port);
 
-    co_spawn(_ioc, accept_loop(std::move(acceptor)), detached);
+    co_spawn(_exec, accept_loop(std::move(acceptor)), detached);
 }

@@ -166,7 +166,7 @@
         }
 
         if (_endpoint.port() == 0) {
-            udp::resolver resolver(_io);
+            udp::resolver resolver(_exec);
 
             auto results = co_await resolver.async_resolve(udp::v4(), _host, std::to_string(_port), net::redirect_error(net::use_awaitable, ec));
             if (ec) co_return false;

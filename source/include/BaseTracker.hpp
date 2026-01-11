@@ -24,26 +24,20 @@ struct TrackerResponse {
 
 class BaseTracker {
 public:
-    BaseTracker(boost::asio::io_context& io, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash)
-        : _io(io), _raw_url(tracker_url), _info_hash(info_hash)
+    BaseTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash)
+        : _exec(exec), _raw_url(tracker_url), _info_hash(info_hash)
     {
         auto rv = boost::urls::parse_uri(_raw_url);
-        if (!rv)
-            throw std::runtime_error("Invalid tracker URL");
+        if (!rv) throw std::runtime_error("Invalid tracker URL");
 
         _url = *rv;
 
         _scheme = std::string(_url.scheme());
         _host   = std::string(_url.host());
 
-        if (_url.port().empty()) {
-            _port = (_scheme == "udp") ? 6969 : 443;
-        } else {
-            _port = static_cast<uint16_t>(
-                std::stoi(std::string(_url.port()))
-            );
-        }
-
+        if (_url.port().empty()) _port = (_scheme == "udp") ? 6969 : 443;
+        else  _port = static_cast<uint16_t>(std::stoi(std::string(_url.port())));
+    
         _path = std::string(_url.path());
     }
 
@@ -56,7 +50,7 @@ public:
     virtual void stop() { }
 
 protected:
-    boost::asio::io_context& _io;
+    boost::asio::any_io_executor _exec;
 
     std::string      _raw_url;
     boost::urls::url _url;

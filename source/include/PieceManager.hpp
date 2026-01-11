@@ -12,8 +12,9 @@ class FileManager;
 class PieceManager
 {
 public:
-    PieceManager(boost::asio::io_context& io, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
-        pm_strand(boost::asio::make_strand(io)),
+    PieceManager(boost::asio::any_io_executor exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
+        _exec(exec),
+        pm_strand(boost::asio::make_strand(_exec)),
         _num_pieces(num_pieces),
         _piece_length(piece_length),
         _total_size(total_size),
@@ -51,7 +52,8 @@ private:
     void return_block(uint32_t piece, uint32_t begin);
     std::vector<uint8_t> fetch_my_bitset() const;
 
-    boost::asio::strand<boost::asio::io_context::executor_type> pm_strand;
+    boost::asio::any_io_executor _exec;
+    boost::asio::strand<boost::asio::any_io_executor> pm_strand;
 
     void lazy_init(uint32_t piece_index);
     bool verify_hash(uint32_t piece_index);

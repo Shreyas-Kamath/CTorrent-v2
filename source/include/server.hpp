@@ -20,7 +20,7 @@ struct UploadedFile {
 
 class HttpServer : public std::enable_shared_from_this<HttpServer> {
 public:
-    HttpServer(boost::asio::io_context& ioc, unsigned short port, std::string doc_root, Client* client);
+    HttpServer(boost::asio::any_io_executor ioc, unsigned short port, std::string doc_root, Client* client);
 
     void run(); // start accepting connections asynchronously
 
@@ -52,7 +52,7 @@ private:
                             http::response<http::string_body>& res, const std::string& hash);
 
 private:
-    boost::asio::io_context& _ioc;
+    boost::asio::any_io_executor _exec;
     unsigned short _port;
     std::string _doc_root;
     Client* _client;

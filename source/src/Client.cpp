@@ -19,7 +19,7 @@ void Client::run() {
     auto exe_dir  = get_exe_dir();
     auto doc_root = compute_doc_root();
 
-    HttpServer server(_ioc, 8080, doc_root, this);
+    HttpServer server(_ioc.get_executor(), 8080, doc_root, this);
     server.run();
     _ioc.run();
 }
@@ -49,7 +49,7 @@ AddTorrentResult Client::add_torrent(const std::vector<char>& data) {
     if (_sessions.contains(hash)) return { hash, std::string(md.name), false, "Torrent already exists" };
 
     // spawn a session
-    auto session = std::make_unique<TorrentSession>(_ioc, std::move(md));
+    auto session = std::make_unique<TorrentSession>(_ioc.get_executor(), std::move(md));
 
     session->start();
 
@@ -168,6 +168,7 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
         boost::system::error_code ec;
         co_await v4_acceptor->async_accept(socket, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
+        // detach later
         if (!ec) {
             std::println("ipv4 inbound peer: {}", socket.remote_endpoint().address().to_string());
 
@@ -191,7 +192,7 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
             }
 
             // add the peer now
-            it->second->add_inbound_peer(std::move(socket));
+            // it->second->add_inbound_peer(std::move(socket));
         }
 
     }
@@ -200,6 +201,7 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
 boost::asio::awaitable<void> Client::accept_loop_v6() {
     using tcp = boost::asio::ip::tcp;
 
+    // detach later
     while (true) {
         if (!v6_acceptor || !v6_acceptor->is_open()) co_return;
         tcp::socket socket(_ioc);
