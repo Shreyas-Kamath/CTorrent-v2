@@ -14,6 +14,8 @@ class PieceManager;
 class PeerConnection: public std::enable_shared_from_this<PeerConnection> {
 
 public:
+
+    // outbound
     PeerConnection(boost::asio::io_context& io, 
         const Peer& peer, 
         const std::array<unsigned char, 20>& info_hash, 
@@ -23,6 +25,13 @@ public:
         {
             _peer_bitfield.resize(_num_pieces, false);    
         }
+
+    // inbound 
+    PeerConnection(boost::asio::ip::tcp::socket&& socket,
+        const std::array<unsigned char, 20>& info_hash,
+        const std::string& peer_id,
+        size_t num_pieces,
+        PieceManager& pm): 
     
     Peer& peer() { return p; }
 
@@ -30,7 +39,7 @@ public:
     [[nodiscard]] boost::asio::awaitable<void> stop();
     [[nodiscard]] boost::asio::awaitable<void> send_have(uint32_t piece);
 
-    double progress() const { return (double)completed_pieces * 100.0 / _num_pieces; }
+    double progress() const { return static_cast<double>(completed_pieces) * 100.0 / _num_pieces; }
     int requests() const { return _in_flight; }
     bool choked() const { return am_choked; }
     bool interested() const { return am_interested; }

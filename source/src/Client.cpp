@@ -170,6 +170,28 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
 
         if (!ec) {
             std::println("ipv4 inbound peer: {}", socket.remote_endpoint().address().to_string());
+
+            auto hash = co_await extract_info_hash(socket);
+            auto hexed_hash = hash.and_then([this](const auto& h) {
+                return std::optional<std::string>{ compute_info_hash_hex(h) };
+            });
+
+            if (!hexed_hash) {
+                socket.close();
+                continue;
+            }
+
+            auto it = _sessions.find(*hexed_hash);
+
+            // it is possible that a peer from a stale or previously downloaded torrent is trying to connect
+            // through someone else's peer list, we cannot serve requests here
+            if (it == _sessions.end()) {
+                socket.close();
+                continue;
+            }
+
+            // add the peer now
+            it->second->add_inbound_peer(std::move(socket));
         }
 
     }
@@ -190,4 +212,44 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
         }
 
     }
+}
+
+boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::extract_info_hash(boost::asio::ip::tcp::socket& socket) {
+    std::array<unsigned char, 68> buf{};
+
+    boost::system::error_code ec;
+    co_await boost::asio::async_read(socket, boost::asio::buffer(buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+    if (ec) {
+        std::println("Could not read data from incoming socket: {}", socket.remote_endpoint().address().to_string());
+        co_return std::nullopt;
+    }
+
+    if (static_cast<unsigned char>(buf[0]) != 19) {
+        std::println("Invalid pstrlen: {}", (static_cast<unsigned char>(buf[0])));
+        co_return std::nullopt;
+    }
+
+    static constexpr char protocol[] = "BitTorrent protocol";
+
+    for (size_t i = 0; i < 19; ++i) if (static_cast<char>(buf[1 + i]) != protocol[i]) co_return std::nullopt;
+
+    std::array<unsigned char, 20> info_hash{};
+
+    std::copy(buf.begin() + 28, buf.begin() + 48, info_hash.begin());
+
+    co_return info_hash;
+}
+
+std::string Client::compute_info_hash_hex(const std::array<unsigned char, 20>& info_hash) const {
+    static const char* hex = "0123456789abcdef";
+    std::string info_hash_hex; info_hash_hex.resize(40);
+
+    for (size_t i = 0; i < 20; ++i) {
+        unsigned char b = info_hash[i];
+        info_hash_hex[2*i]     = hex[(b >> 4) & 0xF];
+        info_hash_hex[2*i + 1] = hex[b & 0xF];
+    }
+
+    return info_hash_hex;
 }

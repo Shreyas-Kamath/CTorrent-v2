@@ -43,8 +43,11 @@ private:
     void detect_network_capabilities();
     bool can_bind_ipv6();
     void start_acceptors();
+
     boost::asio::awaitable<void> accept_loop_v4();
     boost::asio::awaitable<void> accept_loop_v6();
+    boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> extract_info_hash(boost::asio::ip::tcp::socket& socket);
+    std::string compute_info_hash_hex(const std::array<unsigned char, 20>& info_hash) const;
 
     // acceptors
     std::unique_ptr<boost::asio::ip::tcp::acceptor> v4_acceptor;

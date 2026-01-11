@@ -185,3 +185,12 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
 
     return out;
 }
+
+void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket) {
+    auto conn = std::make_shared<PeerConnection>(
+        std::move(socket), _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm
+    );
+
+    conn->start_inbound();
+    _peer_connections.push_back(conn);
+}
