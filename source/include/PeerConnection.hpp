@@ -27,11 +27,14 @@ public:
         }
 
     // inbound 
-    // PeerConnection(boost::asio::ip::tcp::socket&& socket,
-    //     const std::array<unsigned char, 20>& info_hash,
-    //     const std::string& peer_id,
-    //     size_t num_pieces,
-    //     PieceManager& pm): 
+    PeerConnection(boost::asio::ip::tcp::socket&& socket,
+        const std::array<unsigned char, 20>& info_hash,
+        const std::string& peer_id,
+        size_t num_pieces,
+        PieceManager& pm): _socket(std::move(socket)), _exec(_socket.get_executor()), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), "") 
+        {
+            _peer_bitfield.resize(_num_pieces, false);
+        }
     
     Peer& peer() { return p; }
 
@@ -73,8 +76,10 @@ private:
     [[nodiscard]] boost::asio::awaitable<void> message_loop();
     [[nodiscard]] boost::asio::awaitable<void> watchdog();
 
-    // helpers
+    boost::asio::ip::tcp::socket _socket;
     boost::asio::any_io_executor _exec;
+    
+    // helpers
     boost::asio::strand<boost::asio::any_io_executor> write_strand;
     [[nodiscard]] boost::asio::awaitable<std::optional<uint32_t>> read_u32_be();
     [[nodiscard]] boost::asio::awaitable<std::optional<uint8_t>> read_u8();
@@ -97,8 +102,6 @@ private:
     
     std::vector<unsigned char> _msg_buf;
     boost::dynamic_bitset<> _peer_bitfield;
-
-    boost::asio::ip::tcp::socket _socket;
 
     Peer p;
     const std::array<unsigned char, 20> _info_hash;
