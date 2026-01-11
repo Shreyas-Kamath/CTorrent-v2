@@ -31,7 +31,7 @@ public:
         const std::array<unsigned char, 20>& info_hash,
         const std::string& peer_id,
         size_t num_pieces,
-        PieceManager& pm): _socket(std::move(socket)), _exec(_socket.get_executor()), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), "") 
+        PieceManager& pm): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), "") 
         {
             _peer_bitfield.resize(_num_pieces, false);
         }
@@ -76,8 +76,8 @@ private:
     [[nodiscard]] boost::asio::awaitable<void> message_loop();
     [[nodiscard]] boost::asio::awaitable<void> watchdog();
 
-    boost::asio::ip::tcp::socket _socket;
     boost::asio::any_io_executor _exec;
+    boost::asio::ip::tcp::socket _socket;
     
     // helpers
     boost::asio::strand<boost::asio::any_io_executor> write_strand;
