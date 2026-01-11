@@ -33,7 +33,8 @@ public:
     void add_inbound_peer(boost::asio::ip::tcp::socket&& socket);
     
 private:
-    boost::asio::awaitable<void> remove_peer(std::shared_ptr<PeerConnection>);
+    [[nodiscard]] boost::asio::awaitable<void> remove_peer(std::shared_ptr<PeerConnection>);
+    [[nodiscard]] boost::asio::awaitable<void> run_peer(std::shared_ptr<PeerConnection> conn);
     void broadcast_have(uint32_t piece);
 
     struct TrackerStats {

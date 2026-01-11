@@ -192,7 +192,7 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
             }
 
             // add the peer now
-            // it->second->add_inbound_peer(std::move(socket));
+            it->second->add_inbound_peer(std::move(socket));
         }
 
     }
@@ -211,8 +211,29 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
 
         if (!ec) {
             std::println("ipv6 inbound peer: {}", socket.remote_endpoint().address().to_string());
-        }
 
+            auto hash = co_await extract_info_hash(socket);
+            auto hexed_hash = hash.and_then([this](const auto& h) {
+                return std::optional<std::string>{ compute_info_hash_hex(h) };
+            });
+
+            if (!hexed_hash) {
+                socket.close();
+                continue;
+            }
+
+            auto it = _sessions.find(*hexed_hash);
+
+            // it is possible that a peer from a stale or previously downloaded torrent is trying to connect
+            // through someone else's peer list, we cannot serve requests here
+            if (it == _sessions.end()) {
+                socket.close();
+                continue;
+            }
+
+            // add the peer now
+            it->second->add_inbound_peer(std::move(socket));
+        }
     }
 }
 

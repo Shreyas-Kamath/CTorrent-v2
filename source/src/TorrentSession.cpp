@@ -37,14 +37,7 @@ void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
             );
 
             _peer_connections.push_back(conn);
-            boost::asio::co_spawn(
-                _exec,
-                [this, conn]() -> boost::asio::awaitable<void> {
-                    co_await conn->start();
-                    co_await remove_peer(conn);
-                },
-                boost::asio::detached
-            );
+            boost::asio::co_spawn(_exec, run_peer(conn), boost::asio::detached);
         }
     }
 }
@@ -186,11 +179,16 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
     return out;
 }
 
-// void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket) {
-//     auto conn = std::make_shared<PeerConnection>(
-//         std::move(socket), _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm
-//     );
+void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket) {
+    // auto conn = std::make_shared<PeerConnection>(
+    //     std::move(socket), _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm
+    // );
 
-//     conn->start_inbound();
-//     _peer_connections.push_back(conn);
-// }
+    // conn->start_inbound();
+    // _peer_connections.push_back(conn);
+}
+
+boost::asio::awaitable<void> TorrentSession::run_peer(std::shared_ptr<PeerConnection> conn) {
+    co_await conn->start();
+    co_await remove_peer(conn);
+}
