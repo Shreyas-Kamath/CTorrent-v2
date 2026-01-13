@@ -44,7 +44,6 @@ async function loadTorrents() {
             <div class="torrent-row">
                 <div>${i + 1}</div>
                 <div>${t.name}</div>
-
                 <div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width:${progress.toFixed(2)}%"></div>
@@ -52,6 +51,8 @@ async function loadTorrents() {
                     <small>${progress.toFixed(2)}%</small>
                 </div>
 
+                <div>${formatBytes(t.downloaded)}</div>
+                <div>${formatBytes(t.uploaded)}</div>
                 <div>${formatBytes(size)}</div>
                 <div class="status-${t.status}">${t.status}</div>
 

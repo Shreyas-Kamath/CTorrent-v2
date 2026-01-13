@@ -81,14 +81,16 @@ button:active {
     display: grid;
 
     grid-template-columns:
-        40px       /* index */
-        0.9fr        /* name */
-        180px      /* progress */
-        110px      /* size */
-        120px      /* status */
-        90px      /* trackers */
-        90px      /* peers */
-        140px;     /* actions */
+        40px        /* index */
+        0.9fr         /* name */
+        180px       /* progress */
+        110px       /* downloaded */
+        110px       /* uploaded */
+        110px       /* size */
+        120px       /* status */
+        90px        /* trackers */
+        90px        /* peers */
+        140px;      /* actions */
     padding: 10px 8px;
     border-bottom: 1px solid #e8e8e8;
     align-items: center;
