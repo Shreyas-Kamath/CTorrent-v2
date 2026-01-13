@@ -233,6 +233,8 @@ void HttpServer::fetch_torrents_info(const http::request<http::dynamic_body>& re
 
         obj["name"] = snapshot.name;
         obj["hash"] = snapshot.hash;
+        obj["downloaded"] = snapshot.downloaded;
+        obj["uploaded"] = snapshot.uploaded;
         obj["progress"] = snapshot.progress;
         obj["size"] = snapshot.total_size;
         obj["status"] = snapshot.status;

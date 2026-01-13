@@ -39,6 +39,7 @@ boost::asio::awaitable<std::optional<std::vector<unsigned char>>> PieceManager::
             );
     });
 
+    uploaded += data->size();
     co_return data;
 }
 
