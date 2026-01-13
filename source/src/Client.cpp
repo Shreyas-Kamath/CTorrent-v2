@@ -49,7 +49,7 @@ AddTorrentResult Client::add_torrent(const std::vector<char>& data) {
     if (_sessions.contains(hash)) return { hash, std::string(md.name), false, "Torrent already exists" };
 
     // spawn a session
-    auto session = std::make_unique<TorrentSession>(_ioc.get_executor(), std::move(md));
+    auto session = std::make_unique<TorrentSession>(_ioc.get_executor(), std::move(md), nc);
 
     session->start();
 
@@ -192,7 +192,7 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
             }
 
             // add the peer now
-            it->second->add_inbound_peer(std::move(socket));
+            it->second->add_inbound_peer(std::move(socket), PeerDirection::Inbound);
         }
 
     }
@@ -232,7 +232,7 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
             }
 
             // add the peer now
-            it->second->add_inbound_peer(std::move(socket));
+            it->second->add_inbound_peer(std::move(socket), PeerDirection::Inbound);
         }
     }
 }

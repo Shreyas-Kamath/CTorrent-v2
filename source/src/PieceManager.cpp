@@ -162,7 +162,7 @@ bool PieceManager::is_piece_complete(uint32_t piece) const {
 
 inline bool PieceManager::endgame_required() const {
     auto progress = static_cast<double>(_completed_pieces) / _num_pieces * 100.0;
-    return progress >= 95;
+    return progress >= 90;
 }
 
 // return piece_index, offset, length, or nullopt, if nothing

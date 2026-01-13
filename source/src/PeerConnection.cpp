@@ -6,30 +6,39 @@
 #include <print>
 
 boost::asio::awaitable<void> PeerConnection::start() {
-    boost::asio::ip::tcp::endpoint endpoint(p.addr(), p.port());
-    boost::system::error_code ec;
 
-    co_await _socket.async_connect(endpoint, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    if (direction == PeerDirection::Outbound) {
+        boost::asio::ip::tcp::endpoint endpoint(p.addr(), p.port());
+        boost::system::error_code ec;
 
-    // most likely a dead / saturated / firewalled peer
-    if (ec) { 
-        co_await stop();
-        co_return;
+        co_await _socket.async_connect(endpoint, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+        // most likely a dead / saturated / firewalled peer
+        if (ec) { 
+            co_await stop();
+            co_return;
+        }
+
+        co_await handshake();
     }
 
-    co_await handshake();
+    else if (direction == PeerDirection::Inbound) {
+        build_handshake();
+
+        boost::system::error_code ec;
+        co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+            
+        // bad connection
+        if (ec) {
+            co_await stop();
+            co_return;
+        }
+    }
 
     last_received = std::chrono::steady_clock::now();
 
     co_await send_bitfield();
-
-    // // indicate interest immediately
-    // // bittorrent allows this
-    // if (!am_interested) {
-    //     co_await send_interested();
-    //     am_interested = true;
-    // }
-
+        
     boost::asio::co_spawn(_exec, watchdog(), boost::asio::detached);
     co_await message_loop();
 }
@@ -304,6 +313,12 @@ boost::asio::awaitable<void> PeerConnection::send_unchoke() {
     boost::system::error_code ec;
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
+    if (ec) {
+        co_await stop();
+        co_return;
+    }
+
+    std::println("{} was unchoked", p.addr().to_string());
     peer_choked = false;
 }
 

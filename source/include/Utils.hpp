@@ -14,3 +14,5 @@
 std::string read_from_file(const std::string& path);
 std::optional<boost::asio::ip::address_v6> detect_ipv6_address();
 bool is_good_ipv6(const IN6_ADDR& addr);
+
+enum class PeerDirection: uint8_t { Inbound, Outbound };

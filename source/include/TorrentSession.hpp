@@ -11,15 +11,17 @@
 #include "MetadataParser.hpp"
 #include "PieceManager.hpp"
 #include "FileManager.hpp"
+#include "Utils.hpp"
 
 class PeerConnection;
 struct TorrentSnapshot;
 struct PeerSnapshot;
 struct TrackerSnapshot;
+struct NetworkCapabilities;
 
 class TorrentSession {
 public:
-    TorrentSession(boost::asio::any_io_executor exec, Metadata&& md);
+    TorrentSession(boost::asio::any_io_executor exec, Metadata&& md, const NetworkCapabilities& nc);
 
     const std::string_view& name() const;
 
@@ -30,7 +32,7 @@ public:
     TorrentSnapshot snapshot() const;
     std::vector<PeerSnapshot> peer_snapshots() const;
     std::vector<TrackerSnapshot> tracker_snapshots() const;
-    void add_inbound_peer(boost::asio::ip::tcp::socket&& socket);
+    void add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
     
 private:
     [[nodiscard]] boost::asio::awaitable<void> remove_peer(std::shared_ptr<PeerConnection>);
@@ -68,6 +70,7 @@ private:
 
     PieceManager _pm;
     FileManager _fm;
+    const NetworkCapabilities& _nc;
 
     void build_tracker_list();
     void on_tracker_response(const TrackerResponse& resp);

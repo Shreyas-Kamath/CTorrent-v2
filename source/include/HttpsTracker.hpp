@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseTracker.hpp"
+#include "NetworkCapabilities.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -14,13 +15,25 @@ using tcp = net::ip::tcp;
 
 class HttpsTracker : public BaseTracker {
 public:    
-    HttpsTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash): BaseTracker(exec, tracker_url, info_hash), _ssl_ctx(boost::asio::ssl::context::tlsv12_client) {
+    HttpsTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash, const NetworkCapabilities& nc): BaseTracker(exec, tracker_url, info_hash, nc), _ssl_ctx(boost::asio::ssl::context::tlsv12_client) {
         _encoded_info_hash.reserve(_info_hash.size() * 3);
 
         for (unsigned char b: _info_hash) {
             char buf[4];
             std::snprintf(buf, sizeof(buf), "%%%02X", b);
             _encoded_info_hash += buf;
+        }
+
+        if (_nc.ipv6_address) {
+            auto bytes = _nc.ipv6_address->to_bytes();
+            ipv6_raw.reserve(48);
+            static constexpr char hex[] = "0123456789ABCDEF";
+
+            for (uint8_t b: bytes) {
+                ipv6_raw.push_back('%');
+                ipv6_raw.push_back(hex[b >> 4]);
+                ipv6_raw.push_back(hex[b & 0x0F]);
+            }
         }
     }
 
@@ -35,4 +48,8 @@ private:
     TrackerResponse parse_peers(const std::string& body);
     std::string _encoded_info_hash;
 
+    std::string ipv6_raw;
+
+    void parse_v4(TrackerResponse& out, const BEncodeValue& peers_entry);
+    void parse_v6(TrackerResponse& out, const BEncodeValue& peers_entry);
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Peer.hpp"
+#include "Utils.hpp"
 
 #include <memory>
 #include <vector>
@@ -21,7 +22,8 @@ public:
         const std::array<unsigned char, 20>& info_hash, 
         const std::string& peer_id,
         size_t num_pieces,
-        PieceManager& pm): _exec(exec), _socket(_exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec))
+        PieceManager& pm,
+        PeerDirection dir): _exec(exec), _socket(_exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);    
         }
@@ -31,7 +33,8 @@ public:
         const std::array<unsigned char, 20>& info_hash,
         const std::string& peer_id,
         size_t num_pieces,
-        PieceManager& pm): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), "") 
+        PieceManager& pm, 
+        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), ""), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);
         }
@@ -115,6 +118,7 @@ private:
     static constexpr auto REQUEST_TIMEOUT = std::chrono::seconds(10);
     boost::asio::steady_timer block_timeout_timer;
     std::vector<InFlight> in_flight_blocks;
+    PeerDirection direction;
 
     std::chrono::steady_clock::time_point last_unchoked;
     std::chrono::steady_clock::time_point last_received;

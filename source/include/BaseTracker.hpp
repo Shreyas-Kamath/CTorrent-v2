@@ -14,6 +14,7 @@
 #include <boost/url/grammar/charset.hpp>
 
 class TorrentSession;
+struct NetworkCapabilities;
 
 struct TrackerResponse {
 
@@ -24,8 +25,8 @@ struct TrackerResponse {
 
 class BaseTracker {
 public:
-    BaseTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash)
-        : _exec(exec), _raw_url(tracker_url), _info_hash(info_hash)
+    BaseTracker(boost::asio::any_io_executor exec, std::string_view tracker_url, const std::array<unsigned char, 20>& info_hash, const NetworkCapabilities& nc)
+        : _nc(nc), _exec(exec), _raw_url(tracker_url), _info_hash(info_hash)
     {
         auto rv = boost::urls::parse_uri(_raw_url);
         if (!rv) throw std::runtime_error("Invalid tracker URL");
@@ -60,4 +61,5 @@ protected:
     std::string      _path;
 
     const std::array<unsigned char, 20>& _info_hash;
+    const NetworkCapabilities& _nc;
 };

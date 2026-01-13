@@ -15,8 +15,9 @@ boost::urls::url HttpsTracker::build_announce(const std::string& peer_id, uint64
         {"compact", "1"}
     });
 
-    // if (my_ipv6.has_value()) announce_url.params().set("ipv6", my_ipv6.value());
+    if (_nc.ipv6_outbound && _nc.ipv6_address) announce_url.params().set("ipv6", ipv6_raw);
     if (downloaded == 0) announce_url.params().set("event", "started");
+    else if (downloaded == total) announce_url.params().set("event", "completed");
 
     return announce_url;
 }
@@ -87,13 +88,22 @@ TrackerResponse HttpsTracker::parse_peers(const std::string& body) {
     try {
         BEncodeParser resp_parser(body);
         auto root = resp_parser.parse().as_dict();
+        if (root.contains("interval")) out.interval = (uint32_t)root.at("interval").as_int();
 
         const auto& peers_entry = root.at("peers");
+        parse_v4(out, peers_entry);
 
-        if (root.contains("interval")) {
-            out.interval = (uint32_t)root.at("interval").as_int();
-        }
+        auto peers6 = root.find("peers6");
+        if (peers6 != root.end()) parse_v6(out, peers6->second);
+    }
+    catch (const std::exception& ex) {
+        out.error = ex.what();
+    }
 
+    return out;
+}
+
+void HttpsTracker::parse_v4(TrackerResponse& out, const BEncodeValue& peers_entry) {
         if (peers_entry.is_list()) {
             for (const auto& p : peers_entry.as_list()) {
                 const auto& d = p.as_dict();
@@ -128,13 +138,41 @@ TrackerResponse HttpsTracker::parse_peers(const std::string& body) {
                 out.peers.emplace_back(ip, (int)port, "");
             }
         }
-        else {
-            throw std::runtime_error("Unsupported peers format");
-        }
-    }
-    catch (const std::exception& ex) {
-        out.error = ex.what();
-    }
+}
 
-    return out;
+void HttpsTracker::parse_v6(TrackerResponse& out, const BEncodeValue& peers_entry) {
+        if (peers_entry.is_list()) {
+            for (const auto& p : peers_entry.as_list()) {
+                const auto& d = p.as_dict();
+
+                auto ip   = d.at("ip").as_string();
+                auto addr = boost::asio::ip::make_address_v6(ip);
+
+                std::string id = "";
+                if (d.contains("peer id")) id = d.at("peer id").as_string();
+
+                auto port = d.at("port").as_int();
+
+                out.peers.emplace_back(addr, (int)port, id);
+            }
+        }
+
+        else if (peers_entry.is_string()) {
+            const auto blob = peers_entry.as_string();
+
+            if (blob.size() % 18 != 0) throw std::runtime_error("Invalid compact peer list");
+
+            for (size_t i = 0; i < blob.size(); i += 18) {
+
+                const unsigned char* x = reinterpret_cast<const unsigned char*>(&blob[i]);
+
+                boost::asio::ip::address_v6::bytes_type bytes {};
+                std::memcpy(bytes.data(), x, 16);
+
+                auto ip = boost::asio::ip::make_address_v6(bytes);
+                auto port = (x[16] << 8) | x[17];
+
+                out.peers.emplace_back(ip, (int)port, "");
+            }
+        }
 }
