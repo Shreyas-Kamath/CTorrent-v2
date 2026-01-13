@@ -318,7 +318,7 @@ boost::asio::awaitable<void> PeerConnection::send_unchoke() {
         co_return;
     }
 
-    std::println("{} was unchoked", p.addr().to_string());
+    // std::println("{} was unchoked", p.addr().to_string());
     peer_choked = false;
 }
 
@@ -398,7 +398,7 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
 
                 case Message_ID::Interested:
                     peer_interested = true;
-                    std::println("{} sent interested", p.addr().to_string());
+                    // std::println("{} sent interested", p.addr().to_string());
                     if (peer_choked) co_await send_unchoke();
                     break;
 
@@ -508,7 +508,7 @@ bool PeerConnection::is_valid_upload_request(const ParsedRequest& r) const {
 }
 
 boost::asio::awaitable<void> PeerConnection::handle_request() {
-    std::println("{} is requesting a block", p.addr().to_string());
+    // std::println("{} is requesting a block", p.addr().to_string());
     auto parsed = parse_request();
     if (!parsed) co_return;
     if (!is_valid_upload_request(parsed.value())) co_return;
@@ -536,5 +536,5 @@ boost::asio::awaitable<void> PeerConnection::handle_request() {
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
     if (ec) co_await stop();
 
-    std::println("Sent a block to peer {}", p.addr().to_string());
+    // std::println("Sent a block to peer {}", p.addr().to_string());
 }

@@ -16,14 +16,14 @@ Eventually it all clicked, and it was absolutely worth it.
 - Fully asynchronous **HTTPS and UDP trackers** (HTTP planned)
 - Follows the BitTorrent specification and respects re-announce timers
 - Peer connection pool supporting **IPv4 and IPv6**
-- Fully asynchronous peer networking (downloads only, uploads planned)
+- Fully asynchronous peer networking - downloads + uploads
 - Centralized piece picker
 - Low memory usage
 - Dedicated file writer thread to keep **disk I/O separate from network I/O**
 - Minimalistic web UI
 - Supports multiple torrents
 - Performs well on unreliable networks  
-  *(~6–7 MB/s on a mobile hotspot)*
+  *(reached a peak speed of ~27 MB/s on a mobile hotspot)*
 
 ---
 
@@ -41,7 +41,8 @@ Eventually it all clicked, and it was absolutely worth it.
 - Boost.Asio  
 - Boost.Beast  
 - Boost.Endian  
-- Boost.URL  
+- Boost.URL 
+- Boost.JSON 
 - OpenSSL (SHA-1)
 
 ---
@@ -60,8 +61,8 @@ This project was an excuse to go deep into **low-level systems programming**, ne
 
 ## TODO
 
-- Endgame mode
+- ~~Endgame mode~~ Done
 - HTTP trackers
 - Fast resume
 - Persistence across shutdowns
-- Upload support
+- ~~Upload support~~ Done
