@@ -97,11 +97,9 @@
 
         uint32_t event = 0; // default: none
 
-        if (downloaded == 0) {
-            event = 2; // started
-        }
+        if (downloaded == 0) event = 2; // started
         // later when completed:
-        // event = 1;
+        else if (downloaded == total) event = 1;
         // on shutdown:
         // event = 3;
 
