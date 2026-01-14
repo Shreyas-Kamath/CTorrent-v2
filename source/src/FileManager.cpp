@@ -24,12 +24,15 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
     for (const auto& f: _output_files) {
         std::filesystem::create_directories(f.path.parent_path());
 
-        std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
-
-        // preallocate space to prevent disk thrashing
-        out.seekp(f.length - 1);
-        out.write("", 1);   
+        if (!std::filesystem::exists(f.path)) {
+            std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
+            // preallocate space to prevent disk thrashing
+            out.seekp(f.length - 1);
+            out.write("", 1);   
+        }
     }
+
+    if (!std::filesystem::exists(savefile)) std::ofstream out(savefile, std::ios::binary | std::ios::trunc);
 }
 
 void FileManager::enqueue_piece(uint32_t piece, std::vector<unsigned char>&& data) {
@@ -78,6 +81,7 @@ void FileManager::worker_loop() {
 
         if (has_write) {
             write_to_disk(wj.piece, std::move(wj.data));
+            mark_complete(wj.piece);
         }
         else if (has_read) {
             auto data = read_from_disk(rj.piece, rj.begin, rj.length);
@@ -90,7 +94,6 @@ void FileManager::worker_loop() {
         }
     }
 }
-
 
 void FileManager::write_to_disk(uint32_t piece, std::vector<unsigned char>&& data) {
     uint64_t piece_offset = uint64_t(piece) * standard_piece_length;
@@ -150,4 +153,23 @@ std::optional<std::vector<unsigned char>> FileManager::read_from_disk(uint32_t p
     }
 
     return buffer;
+}
+
+std::optional<std::vector<uint32_t>> FileManager::read_save_file() {
+    if (std::filesystem::exists(savefile)) {
+        std::ifstream in(savefile, std::ios::binary);
+
+        std::vector<uint32_t> out;
+
+        uint32_t piece;
+        while (in.read(reinterpret_cast<char*>(&piece), sizeof(piece))) out.push_back(piece);
+
+        return out;
+    }
+    return std::nullopt;
+}
+
+void FileManager::mark_complete(uint32_t piece) {
+    std::ofstream out(savefile, std::ios::app | std::ios::binary | std::ios::out);
+    out.write(reinterpret_cast<const char*>(&piece), sizeof(piece));
 }
