@@ -225,8 +225,9 @@ void UdpTracker::parse_v4(TrackerResponse& out, std::array<unsigned char, 1500>&
             auto ip = boost::asio::ip::make_address_v4(bytes);
             
             uint16_t port = (peer[4] << 8) | peer[5];
+            std::string id = "Unknown";
 
-            out.peers.emplace_back(ip, port, "");
+            out.peers.emplace_back(ip, port, id);
         }
 }
 
@@ -241,7 +242,8 @@ void UdpTracker::parse_v6(TrackerResponse& out, std::array<unsigned char, 1500>&
             auto ip = boost::asio::ip::make_address_v6(bytes);
             
             uint16_t port = (peer[16] << 8) | peer[17];
+            std::string id = "Unknown";
 
-            out.peers.emplace_back(ip, port, "");
+            out.peers.emplace_back(ip, port, id);
         }
 }

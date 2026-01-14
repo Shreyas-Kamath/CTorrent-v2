@@ -111,7 +111,7 @@ void HttpsTracker::parse_v4(TrackerResponse& out, const BEncodeValue& peers_entr
                 auto ip   = d.at("ip").as_string();
                 auto addr = boost::asio::ip::make_address_v4(ip);
 
-                std::string id = "";
+                std::string id = "Unknown";
                 if (d.contains("peer id")) id = d.at("peer id").as_string();
 
                 auto port = d.at("port").as_int();
@@ -134,8 +134,9 @@ void HttpsTracker::parse_v4(TrackerResponse& out, const BEncodeValue& peers_entr
                 };
                 auto ip = boost::asio::ip::make_address_v4(bytes);
                 auto port = (x[4] << 8) | x[5];
+                std::string id = "Unknown";
 
-                out.peers.emplace_back(ip, (int)port, "");
+                out.peers.emplace_back(ip, (int)port, id);
             }
         }
 }
@@ -171,8 +172,9 @@ void HttpsTracker::parse_v6(TrackerResponse& out, const BEncodeValue& peers_entr
 
                 auto ip = boost::asio::ip::make_address_v6(bytes);
                 auto port = (x[16] << 8) | x[17];
+                std::string id = "Unknown";
 
-                out.peers.emplace_back(ip, (int)port, "");
+                out.peers.emplace_back(ip, (int)port, id);
             }
         }
 }
