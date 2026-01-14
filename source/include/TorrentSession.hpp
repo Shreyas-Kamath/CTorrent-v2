@@ -3,7 +3,7 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include <unordered_set>
+#include <unordered_map>
 
 #include <boost/asio.hpp>
 
@@ -35,7 +35,7 @@ public:
     void add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
     
 private:
-    [[nodiscard]] boost::asio::awaitable<void> remove_peer(std::shared_ptr<PeerConnection>);
+    [[nodiscard]] boost::asio::awaitable<void> remove_peer(const Peer& peer);
     [[nodiscard]] boost::asio::awaitable<void> run_peer(std::shared_ptr<PeerConnection> conn);
     void broadcast_have(uint32_t piece);
 
@@ -75,5 +75,27 @@ private:
     void build_tracker_list();
     void on_tracker_response(const TrackerResponse& resp);
 
-    std::vector<std::shared_ptr<PeerConnection>> _peer_connections;
+    struct PeerHash {
+        size_t operator()(const Peer& p) const noexcept {
+            size_t h{};
+
+            const auto& addr = p.addr();
+
+            if (addr.is_v4()) {
+                auto bytes = addr.to_v4().to_bytes();
+                h = hash_bytes(bytes.data(), bytes.size());
+            }
+            else if (addr.is_v6()) {
+                auto bytes = addr.to_v6().to_bytes();
+                h = hash_bytes(bytes.data(), bytes.size());
+            }
+
+            h ^= std::hash<int>{}(p.port()) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+
+    static size_t hash_bytes(const uint8_t* data, size_t len) noexcept;
+
+    std::unordered_map<Peer, std::shared_ptr<PeerConnection>, PeerHash> _peer_connections;
 };

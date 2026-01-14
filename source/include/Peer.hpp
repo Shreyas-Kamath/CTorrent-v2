@@ -10,7 +10,7 @@ public:
     const int port() const { return _port; }
 
     bool operator==(const Peer& other) const noexcept {
-        return _ip == other._ip;
+        return _ip == other._ip && _port == other._port;
     }
 
     std::string& id() { return _id; }

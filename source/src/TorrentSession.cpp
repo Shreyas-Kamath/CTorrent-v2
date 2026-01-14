@@ -10,6 +10,7 @@
 #include <ranges>
 #include <filesystem>
 #include <print>
+#include <unordered_set>
 
 const std::string_view& TorrentSession::name() const { return _metadata.name; }
 
@@ -29,17 +30,16 @@ void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
     std::println("Got {} peers", resp.peers.size());
 
     for (const auto& peer: resp.peers) {
-        auto exists = std::ranges::any_of(_peer_connections, [&peer](const auto& conn) {
-            return conn->peer() == peer;
-        });
 
-        if (!exists) {
-            auto conn = std::make_shared<PeerConnection>(
+        // don't pay the cost up of an allocation front, see if we can actually insert a peer first
+        auto [it, inserted] = _peer_connections.try_emplace(peer);
+
+        if (inserted) {
+            it->second = std::make_shared<PeerConnection>(
                 _exec, peer, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, PeerDirection::Outbound
             );
 
-            _peer_connections.push_back(conn);
-            boost::asio::co_spawn(_exec, run_peer(conn), boost::asio::detached);
+            boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
         }
     }
 }
@@ -50,13 +50,13 @@ void TorrentSession::start() {
 
 void TorrentSession::stop() {}
 
-boost::asio::awaitable<void> TorrentSession::remove_peer(std::shared_ptr<PeerConnection> peer) {
-    std::erase(_peer_connections, peer);
+boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {
+    _peer_connections.erase(peer);
     co_return;
 }
 
 void TorrentSession::broadcast_have(uint32_t piece) {
-    for (auto& peer: _peer_connections) {
+    for (auto& peer: _peer_connections | std::views::values) {
 
         if (!peer || peer->is_stopped()) continue;
 
@@ -142,7 +142,7 @@ std::vector<PeerSnapshot> TorrentSession::peer_snapshots() const {
     std::vector<PeerSnapshot> out;
     out.reserve(_peer_connections.size());
 
-    for (const auto& conn: _peer_connections) {
+    for (const auto& conn: _peer_connections | std::views::values) {
         PeerSnapshot ps;
 
         ps.ip = conn->peer().addr().to_string();
@@ -182,15 +182,31 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
 }
 
 void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir) {
-    auto conn = std::make_shared<PeerConnection>(
-        std::move(socket), _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, dir
-    );
+    // parse id in the client then pass as an arg
+    std::string id = "Unknown";
+    Peer p(socket.remote_endpoint().address(), socket.remote_endpoint().port(), id);
 
-    _peer_connections.push_back(conn);
-    boost::asio::co_spawn(_exec, run_peer(conn), boost::asio::detached);
+    auto [it, inserted] = _peer_connections.try_emplace(p);
+
+    if (inserted) {
+        it->second = std::make_shared<PeerConnection>(
+            std::move(socket), p, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, dir
+        );
+
+        boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
+    }
 }
 
 boost::asio::awaitable<void> TorrentSession::run_peer(std::shared_ptr<PeerConnection> conn) {
     co_await conn->start();
-    co_await remove_peer(conn);
+    co_await remove_peer(conn->peer());
+}
+
+size_t TorrentSession::hash_bytes(const uint8_t* data, size_t len) noexcept {
+    size_t hash = 1469598103934665603ULL;
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= data[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
 }

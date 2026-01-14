@@ -30,11 +30,12 @@ public:
 
     // inbound 
     PeerConnection(boost::asio::ip::tcp::socket&& socket,
+        const Peer& peer,
         const std::array<unsigned char, 20>& info_hash,
         const std::string& peer_id,
         size_t num_pieces,
         PieceManager& pm, 
-        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(_socket.remote_endpoint().address(), _socket.remote_endpoint().port(), ""), direction(dir) 
+        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), p(peer), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);
         }
