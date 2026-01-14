@@ -68,8 +68,8 @@ private:
     
     const uint32_t DEFAULT_ANNOUNCE_TIMER = 180;
 
-    PieceManager _pm;
     FileManager _fm;
+    PieceManager _pm;
     const NetworkCapabilities& _nc;
 
     void build_tracker_list();
