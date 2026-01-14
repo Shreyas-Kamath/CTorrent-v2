@@ -12,19 +12,7 @@ class FileManager;
 class PieceManager
 {
 public:
-    PieceManager(boost::asio::any_io_executor exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
-        _exec(exec),
-        pm_strand(boost::asio::make_strand(_exec)),
-        _num_pieces(num_pieces),
-        _piece_length(piece_length),
-        _total_size(total_size),
-        _piece_hashes(piece_hashes),
-        _fm(fm),
-        _piece_complete_callback(std::move(callback))
-    {
-        _my_bitfield.resize((_num_pieces + 7) / 8);
-        _pieces.resize(_num_pieces);
-    }
+    PieceManager(boost::asio::any_io_executor exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback);
     ~PieceManager() = default;
 
     // these dont modify state, dont need a strand
