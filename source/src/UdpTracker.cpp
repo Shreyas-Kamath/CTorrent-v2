@@ -15,24 +15,11 @@
             if (ec) co_return false;
             context.connected = true;
         }
-
-        auto write_64 = [&](uint64_t value) -> void {
-            boost::endian::native_to_big_inplace(value);
-            std::memcpy(buf.data() + off, &value, 8);
-            off += 8;
-        };
-
-        auto write_32 = [&](uint32_t value) -> void {
-            boost::endian::native_to_big_inplace(value);
-            std::memcpy(buf.data() + off, &value, 4);
-            off += 4;
-        };
-
         auto transaction_id = random_u32();
 
-        write_64(0x41727101980ULL);
-        write_32(0);
-        write_32(transaction_id);
+        write_buffer(buf, 0x41727101980ULL, off);
+        write_buffer(buf, static_cast<uint32_t>(0), off);
+        write_buffer(buf, transaction_id, off);
 
         co_await context.socket.async_send(net::buffer(buf), net::redirect_error(net::use_awaitable, ec));
         if (ec) co_return false;
@@ -64,36 +51,18 @@
         std::array<unsigned char, 98> buf{};
         boost::system::error_code ec;
 
-        auto write_64 = [&](uint64_t value) -> void {
-            boost::endian::native_to_big_inplace(value);
-            std::memcpy(buf.data() + off, &value, 8);
-            off += 8;
-        };
-
-        auto write_32 = [&](uint32_t value) -> void {
-            boost::endian::native_to_big_inplace(value);
-            std::memcpy(buf.data() + off, &value, 4);
-            off += 4;
-        };
-
-        auto write_16 = [&](uint16_t value) -> void {
-            boost::endian::native_to_big_inplace(value);
-            std::memcpy(buf.data() + off, &value, 2);
-            off += 2;
-        };
-
         auto transaction_id = random_u32();
 
-        write_64(context.connection_id);
-        write_32(1); // announce
-        write_32(transaction_id);
+        write_buffer(buf, context.connection_id, off);
+        write_buffer(buf, static_cast<uint32_t>(1), off);
+        write_buffer(buf, transaction_id, off);
 
         std::memcpy(buf.data() + off, _info_hash.data(), 20); off += 20;
         std::memcpy(buf.data() + off, peer_id.data(), 20); off += 20;
 
-        write_64(downloaded); // downloaded
-        write_64(total - downloaded); // left
-        write_64(uploaded); // uploaded
+        write_buffer(buf, downloaded, off);
+        write_buffer(buf, total - downloaded, off);
+        write_buffer(buf, uploaded, off);
 
         uint32_t event = 0; // default: none
 
@@ -103,11 +72,11 @@
         // on shutdown:
         // event = 3;
 
-        write_32(event);
-        write_32(0); // ip, 0 - default  
-        write_32(random_u32()); // key
-        write_32(0xFFFFFFFF); // want (-1 - all peers)
-        write_16(6881); // port
+        write_buffer(buf, event, off);
+        write_buffer(buf, static_cast<uint32_t>(0), off);
+        write_buffer(buf, random_u32(), off);
+        write_buffer(buf, 0xFFFFFFFF, off);
+        write_buffer(buf, static_cast<uint16_t>(6881), off);
 
         co_await context.socket.async_send(net::buffer(buf), net::redirect_error(net::use_awaitable, ec));
         if (ec) co_return TrackerResponse{ {}, 180, ec.message() };

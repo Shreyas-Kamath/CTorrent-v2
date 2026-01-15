@@ -7,6 +7,15 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/beast.hpp>
 
+#include <concepts>
+
+// concepts
+template <typename T>
+concept UnsignedNum = std::is_unsigned_v<T> && std::is_integral_v<T>;
+
+template <typename T>
+concept MutableBuffer = requires(T t) { requires std::same_as<decltype(*t.data()), unsigned char&>; };
+
 namespace net = boost::asio;
 using udp = net::ip::udp;
 
@@ -45,4 +54,11 @@ private:
 
     void parse_v4(TrackerResponse& out, std::array<unsigned char, 1500>& response_buf, size_t size);
     void parse_v6(TrackerResponse& out, std::array<unsigned char, 1500>& response_buf, size_t size);
+
+    template <MutableBuffer Buffer, UnsignedNum Value>
+    auto write_buffer(Buffer& buf, Value val, size_t& Offset) -> void {
+        boost::endian::native_to_big_inplace<Value>(val);
+        std::memcpy(buf.data() + Offset, &val, sizeof(Value));
+        Offset += sizeof(Value);
+    } 
 };
