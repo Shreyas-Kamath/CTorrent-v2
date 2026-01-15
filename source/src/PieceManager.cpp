@@ -32,15 +32,15 @@ PieceManager::PieceManager(boost::asio::any_io_executor exec, size_t num_pieces,
     }
 
 boost::asio::awaitable<std::optional<std::tuple<int, int, int>>> PieceManager::async_next_block_request(const boost::dynamic_bitset<>& peer_bitfield) {
-    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
+    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
     co_return next_block_request(peer_bitfield);
 }
 boost::asio::awaitable<void> PieceManager::async_add_block(uint32_t piece, uint32_t begin, std::span<const unsigned char> block) {
-    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
+    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
     add_block(piece, begin, block);
 }
 boost::asio::awaitable<void> PieceManager::async_return_block(uint32_t piece, uint32_t begin) {
-    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
+    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
     return_block(piece, begin);
 }
 
