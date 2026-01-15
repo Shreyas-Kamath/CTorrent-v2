@@ -32,12 +32,12 @@ public:
     TorrentSnapshot snapshot() const;
     std::vector<PeerSnapshot> peer_snapshots() const;
     std::vector<TrackerSnapshot> tracker_snapshots() const;
-    void add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
+    boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
     
 private:
     [[nodiscard]] boost::asio::awaitable<void> remove_peer(const Peer& peer);
     [[nodiscard]] boost::asio::awaitable<void> run_peer(std::shared_ptr<PeerConnection> conn);
-    void broadcast_have(uint32_t piece);
+    boost::asio::awaitable<void> broadcast_have(uint32_t piece);
 
     struct TrackerStats {
         std::chrono::steady_clock::time_point next_announce;
@@ -61,6 +61,7 @@ private:
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 
     boost::asio::any_io_executor _exec;
+    boost::asio::strand<boost::asio::any_io_executor> peer_list_strand;
 
     std::string peer_id = "-TR2940-1234567890ab";
     Metadata _metadata;                                     // parsed metadata and raw string
@@ -73,7 +74,7 @@ private:
     const NetworkCapabilities& _nc;
 
     void build_tracker_list();
-    void on_tracker_response(const TrackerResponse& resp);
+    boost::asio::awaitable<void> on_tracker_response(const TrackerResponse& resp);
 
     struct PeerHash {
         size_t operator()(const Peer& p) const noexcept {

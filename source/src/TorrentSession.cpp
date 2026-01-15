@@ -16,19 +16,21 @@ const std::string_view& TorrentSession::name() const { return _metadata.name; }
 
 TorrentSession::TorrentSession(boost::asio::any_io_executor exec, Metadata&& md, const NetworkCapabilities& nc): 
     _exec(exec), 
+    peer_list_strand(boost::asio::make_strand(_exec)),
     _metadata(std::move(md)),
     _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length, _exec),
     _nc(nc),
-    _pm(_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { broadcast_have(piece); })
+    _pm(_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { boost::asio::co_spawn(_exec, broadcast_have(piece), boost::asio::detached); })
     {
         build_tracker_list();
     }
 
-void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
+boost::asio::awaitable<void> TorrentSession::on_tracker_response(const TrackerResponse& resp) {
     if (!resp.error.empty()) std::println("Warning: {}", resp.error);
     
     std::println("Got {} peers", resp.peers.size());
 
+    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
     for (const auto& peer: resp.peers) {
 
         // don't pay the cost up of an allocation front, see if we can actually insert a peer first
@@ -42,6 +44,8 @@ void TorrentSession::on_tracker_response(const TrackerResponse& resp) {
             boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
         }
     }
+
+    co_return;
 }
 
 void TorrentSession::start() {
@@ -51,11 +55,14 @@ void TorrentSession::start() {
 void TorrentSession::stop() {}
 
 boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {
+    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
     _peer_connections.erase(peer);
     co_return;
 }
 
-void TorrentSession::broadcast_have(uint32_t piece) {
+boost::asio::awaitable<void> TorrentSession::broadcast_have(uint32_t piece) {
+    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
+
     for (auto& peer: _peer_connections | std::views::values) {
 
         if (!peer || peer->is_stopped()) continue;
@@ -72,7 +79,7 @@ boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
     while (!_stopped) {
         try {
             auto resp = co_await state._tracker_shared_ptr->async_announce(peer_id, _pm.downloaded_bytes(), _pm.uploaded_bytes(), _pm.total_bytes());
-            on_tracker_response(resp);
+            co_await on_tracker_response(resp);
 
             state.stats.peers_returned = resp.peers.size();
             state.stats.interval = resp.interval.value_or(DEFAULT_ANNOUNCE_TIMER);
@@ -181,8 +188,10 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
     return out;
 }
 
-void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir) {
+boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir) {
     // parse id in the client then pass as an arg
+    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
+
     std::string id = "Unknown";
     Peer p(socket.remote_endpoint().address(), socket.remote_endpoint().port(), id);
 
@@ -195,6 +204,8 @@ void TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket, Pee
 
         boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
     }
+
+    co_return;
 }
 
 boost::asio::awaitable<void> TorrentSession::run_peer(std::shared_ptr<PeerConnection> conn) {

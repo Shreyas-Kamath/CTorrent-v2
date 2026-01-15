@@ -336,6 +336,7 @@ boost::asio::awaitable<void> PeerConnection::send_have(uint32_t piece) {
     boost::system::error_code ec;
 
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    if (ec) co_await stop();
 }
 
 void PeerConnection::handle_message(Message_ID id) {
