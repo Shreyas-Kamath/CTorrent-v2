@@ -226,7 +226,7 @@ void HttpServer::handle_add_torrent(const http::request<http::dynamic_body>& req
 void HttpServer::handle_delete_torrent(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res, const std::string& hash) {
     boost::json::object obj;
 
-    auto body = boost::beast::buffers_to_string(req.body());
+    auto body = boost::beast::buffers_to_string(req.body().data());
     auto json = boost::json::parse(body).as_object();
     bool remove_files = json["delete_files"].as_bool();
 
