@@ -58,6 +58,13 @@ AddTorrentResult Client::add_torrent(const std::vector<char>& data) {
     return { hash, std::string(_sessions[hash]->name()), true, "Torrent added" };
 }
 
+void Client::remove_if_exists(const std::string& hash, bool remove_files) {
+    auto it = _sessions.find(hash);
+
+    if (it == _sessions.end()) return;
+    it->second->stop();
+}
+
 std::vector<TorrentSnapshot> Client::get_torrent_snapshots() const {
 
     auto out = _sessions 

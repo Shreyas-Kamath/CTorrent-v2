@@ -29,7 +29,7 @@ public:
     Client();
     void run();
     AddTorrentResult add_torrent(const std::vector<char>& data);
-    void remove_torrent(const std::string& hash);
+    void remove_if_exists(const std::string& hash, bool remove_files);
 
     // ui state
     std::vector<TorrentSnapshot> get_torrent_snapshots() const;

@@ -44,6 +44,8 @@ private:
                     http::response<http::string_body>& res);
     void handle_add_torrent(const http::request<http::dynamic_body>& req,
                             http::response<http::string_body>& res);
+    void handle_delete_torrent(const http::request<http::dynamic_body>& req,
+                            http::response<http::string_body>& res, const std::string& hash);                        
     void fetch_torrents_info(const http::request<http::dynamic_body>& req,
                             http::response<http::string_body>& res);
     void fetch_peers_info(const http::request<http::dynamic_body>& req,

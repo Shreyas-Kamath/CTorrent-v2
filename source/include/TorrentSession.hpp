@@ -56,7 +56,7 @@ private:
     };
 
 
-    bool _stopped = false;
+    bool session_stopped = false;
 
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 

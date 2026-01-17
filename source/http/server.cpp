@@ -127,7 +127,7 @@ void HttpServer::handle_api(const http::request<http::dynamic_body>& req,
 
     if (req.method() == http::verb::post) {
         if (req.target() == "/api/torrents/add") return handle_add_torrent(req, res);
-        // if (args.back() == "remove") return handle_delete_torrent(req, res, args[3]);
+        if (args.back() == "remove") return handle_delete_torrent(req, res, args[3]);
     }
 
     if (req.method() == http::verb::get) {
@@ -221,6 +221,16 @@ void HttpServer::handle_add_torrent(const http::request<http::dynamic_body>& req
     res.body() = boost::json::serialize(obj);
     res.set(http::field::content_type, "application/json");
     res.prepare_payload();
+}
+
+void HttpServer::handle_delete_torrent(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res, const std::string& hash) {
+    boost::json::object obj;
+
+    auto body = boost::beast::buffers_to_string(req.body());
+    auto json = boost::json::parse(body).as_object();
+    bool remove_files = json["delete_files"].as_bool();
+
+    client->remove_if_exists(hash, remove_files);    
 }
 
 void HttpServer::fetch_torrents_info(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res) {
