@@ -55,8 +55,7 @@ private:
         TrackerState(std::shared_ptr<BaseTracker> t, boost::asio::any_io_executor exec): _tracker_shared_ptr(std::move(t)), timer(exec) {}
     };
 
-
-    bool session_stopped = false;
+    std::atomic<bool> session_stopped = false;
 
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 

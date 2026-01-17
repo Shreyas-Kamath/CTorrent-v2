@@ -126,14 +126,14 @@ void HttpServer::handle_api(const http::request<http::dynamic_body>& req,
     auto args = req.target() | std::views::split('/') | std::ranges::to<std::vector<std::string>>();
 
     if (req.method() == http::verb::post) {
-        if (req.target() == "/api/torrents/add") return handle_add_torrent(req, res);
-        if (args.back() == "remove") return handle_delete_torrent(req, res, args[3]);
+        if (req.target() == "/api/torrents/add") { handle_add_torrent(req, res); return; }
+        if (args.back() == "remove") { handle_delete_torrent(req, res, args[3]); return; }
     }
 
     if (req.method() == http::verb::get) {
-        if (req.target() == "/api/torrents") return fetch_torrents_info(req, res);
-        if (args.back() == "peers") return fetch_peers_info(req, res, args[3]); // hash
-        if (args.back() == "trackers") return fetch_trackers_info(req, res, args[3]); // hash
+        if (req.target() == "/api/torrents") { fetch_torrents_info(req, res); return; }
+        if (args.back() == "peers") { fetch_peers_info(req, res, args[3]); return; } // hash
+        if (args.back() == "trackers") { fetch_trackers_info(req, res, args[3]);  return; }// hash
     }
 
     std::println("{}", args);
@@ -230,7 +230,7 @@ void HttpServer::handle_delete_torrent(const http::request<http::dynamic_body>& 
     auto json = boost::json::parse(body).as_object();
     bool remove_files = json["delete_files"].as_bool();
 
-    client->remove_if_exists(hash, remove_files);    
+    _client->remove_if_exists(hash, remove_files);    
 }
 
 void HttpServer::fetch_torrents_info(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res) {

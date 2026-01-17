@@ -26,11 +26,13 @@ boost::asio::awaitable<TrackerResponse> HttpsTracker::async_announce(const std::
     auto executor = co_await net::this_coro::executor;
     boost::system::error_code ec;
     
-    tcp::resolver resolver(executor);
+    _resolver.reset();
+    _stream.reset();
 
-    ssl::stream<tcp::socket> stream(executor, _ssl_ctx);
+    _resolver.emplace(executor);
+    _stream.emplace(executor, _ssl_ctx);
 
-    if (!SSL_set_tlsext_host_name(stream.native_handle(), _host.c_str())) {
+    if (!SSL_set_tlsext_host_name(_stream->native_handle(), _host.c_str())) {
         co_return TrackerResponse{ {}, 180, "Tracker unreachable" };
     }
 
@@ -42,24 +44,24 @@ boost::asio::awaitable<TrackerResponse> HttpsTracker::async_announce(const std::
     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
     // async
-    auto results = co_await resolver.async_resolve(_host, std::to_string(_port), net::redirect_error(net::use_awaitable, ec));
-    if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+    auto results = co_await _resolver->async_resolve(_host, std::to_string(_port), net::redirect_error(net::use_awaitable, ec));
+    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
-    co_await net::async_connect(stream.next_layer(), results, net::redirect_error(net::use_awaitable, ec));
-    if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+    co_await net::async_connect(_stream->next_layer(), results, net::redirect_error(net::use_awaitable, ec));
+    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
-    co_await stream.async_handshake(ssl::stream_base::client, net::redirect_error(net::use_awaitable, ec));
-    if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+    co_await _stream->async_handshake(ssl::stream_base::client, net::redirect_error(net::use_awaitable, ec));
+    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
-    co_await http::async_write(stream, req, net::redirect_error(net::use_awaitable, ec));
-    if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+    co_await http::async_write(*_stream, req, net::redirect_error(net::use_awaitable, ec));
+    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
     boost::beast::flat_buffer buffer;
     http::response<http::dynamic_body> res;
 
-    co_await http::async_read(stream, buffer, res, net::redirect_error(net::use_awaitable, ec));
+    co_await http::async_read(*_stream, buffer, res, net::redirect_error(net::use_awaitable, ec));
 
-    if (ec) {
+    if (ec || _stopped) {
         // sometimes trackers behave badly, like closing the stream before the response is complete
         // tolerate it and try to parse what they send
         if (ec == http::error::end_of_stream || ec == net::ssl::error::stream_truncated) { ec = {}; }
@@ -67,8 +69,8 @@ boost::asio::awaitable<TrackerResponse> HttpsTracker::async_announce(const std::
     }
 
     // ignore end of filestream
-    co_await stream.async_shutdown(net::redirect_error(net::use_awaitable, ec));
-    if (ec) {
+    co_await _stream->async_shutdown(net::redirect_error(net::use_awaitable, ec));
+    if (ec || _stopped) {
         if (ec == http::error::end_of_stream || ec == net::ssl::error::stream_truncated) { ec = {}; }
         else co_return TrackerResponse{ {}, 180, ec.message() };
     }
@@ -177,4 +179,17 @@ void HttpsTracker::parse_v6(TrackerResponse& out, const BEncodeValue& peers_entr
                 out.peers.emplace_back(ip, (int)port, id);
             }
         }
+}
+
+void HttpsTracker::stop() {
+    _stopped.store(true, std::memory_order_release);
+
+    boost::system::error_code ec;
+
+    if (_resolver) _resolver->cancel();
+
+    if (_stream) {
+        _stream->next_layer().cancel(ec);
+        _stream->next_layer().close(ec);
+    }
 }

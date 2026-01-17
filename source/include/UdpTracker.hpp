@@ -29,6 +29,7 @@ public:
     }
 
     boost::asio::awaitable<TrackerResponse> async_announce(const std::string& peer_id, uint64_t downloaded, uint64_t uploaded, uint64_t total) override; 
+    void stop() override;
 
 private:
 

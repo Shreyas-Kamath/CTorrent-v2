@@ -214,3 +214,16 @@ void UdpTracker::parse_v6(TrackerResponse& out, std::array<unsigned char, 1500>&
             out.peers.emplace_back(ip, port, id);
         }
 }
+
+void UdpTracker::stop() {
+    if (udp_v4) {
+        boost::system::error_code ec;
+        udp_v4->socket.cancel(ec);
+        udp_v4->socket.close(ec);
+    }
+    if (udp_v6) {
+        boost::system::error_code ec;
+        udp_v6->socket.cancel(ec);
+        udp_v6->socket.close(ec);
+    }
+}

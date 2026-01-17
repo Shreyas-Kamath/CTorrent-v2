@@ -43,8 +43,14 @@ public:
 
     boost::urls::url build_announce(const std::string& peer_id, uint64_t downloaded, uint64_t uploaded, uint64_t total);
 
+    void stop() override;
+
 private:
     boost::asio::ssl::context _ssl_ctx;
+    std::optional<tcp::resolver> _resolver;
+    std::optional<ssl::stream<tcp::socket>> _stream;
+    std::atomic<bool> _stopped{false};
+
     TrackerResponse parse_peers(const std::string& body);
     std::string _encoded_info_hash;
 

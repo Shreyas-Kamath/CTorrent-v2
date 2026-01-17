@@ -53,7 +53,11 @@ void TorrentSession::start() {
 }
 
 void TorrentSession::stop() {
-
+    session_stopped.store(true, std::memory_order_release);
+    for (auto& state: _tracker_list) {
+        state._tracker_shared_ptr->stop();
+        state.timer.cancel();
+    }
 }
 
 boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {
@@ -78,7 +82,7 @@ boost::asio::awaitable<void> TorrentSession::broadcast_have(uint32_t piece) {
 }
 
 boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
-    while (!session_stopped) {
+    while (!session_stopped.load(std::memory_order_acquire)) {
         try {
             auto resp = co_await state._tracker_shared_ptr->async_announce(peer_id, _pm.downloaded_bytes(), _pm.uploaded_bytes(), _pm.total_bytes());
             co_await on_tracker_response(resp);
@@ -106,7 +110,10 @@ boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
         }
 
         state.timer.expires_at(state.stats.next_announce);
-        co_await state.timer.async_wait(boost::asio::use_awaitable);
+
+        boost::system::error_code ec;
+        co_await state.timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+        if (ec && ec == boost::asio::error::operation_aborted) break;
     }
 }
 
@@ -137,7 +144,7 @@ TorrentSnapshot TorrentSession::snapshot() const {
     cs.downloaded = _pm.downloaded_bytes();
     cs.uploaded = _pm.uploaded_bytes();
 
-    cs.progress = (double)cs.downloaded * 100.0 / cs.total_size;
+    cs.progress = static_cast<double>(cs.downloaded) * 100.0 / cs.total_size;
 
     cs.peers = _peer_connections.size();
     cs.trackers = _tracker_list.size();
