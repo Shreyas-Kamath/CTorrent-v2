@@ -3,6 +3,8 @@ const addBtn = document.getElementById("add-btn");
 const listContainer = document.getElementById("torrent-list");
 document.getElementById("modal-overlay").onclick = closeModal;
 
+let pendingRemoveTorrentHash = null;
+
 function setupUI() {
     // Open file picker
     addBtn.onclick = () => fileInput.click();
@@ -69,7 +71,7 @@ async function loadTorrents() {
                 <div class="controls">
                     <button class="green-btn" onclick="startTorrent('${t.id}')">Start</button>
                     <button class="yellow-btn" onclick="stopTorrent('${t.id}')">Stop</button>
-                    <button class="red-btn" onclick="removeTorrent('${t.id}')">Remove</button>
+                    <button class="red-btn" onclick="openDeleteModal('${t.hash}')">Remove</button>
                 </div>
             </div>
         `;
@@ -86,8 +88,21 @@ async function stopTorrent(id) {
     loadTorrents();
 }
 
-async function removeTorrent(id) {
-    await fetch(`/api/torrents/${id}/remove`, { method: "POST" });
+async function confirmRemoveTorrent() {
+    if (!pendingRemoveTorrentHash) return;
+
+    const deleteFiles =
+        document.getElementById("delete-files-checkbox").checked;
+
+    await fetch(`/api/torrents/${pendingRemoveTorrentHash}/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            delete_files: deleteFiles
+        })
+    });
+
+    closeDeleteModal();
     loadTorrents();
 }
 
@@ -114,6 +129,22 @@ function closeModal() {
 
     stopModalPolling();
 }
+
+function openDeleteModal(hash) {
+    pendingRemoveTorrentHash = hash;
+    document.getElementById("delete-files-checkbox").checked = false;
+
+    document.getElementById("delete-modal-overlay").classList.remove("hidden");
+    document.getElementById("delete-modal").classList.remove("hidden");
+}
+
+function closeDeleteModal() {
+    pendingRemoveTorrentHash = null;
+
+    document.getElementById("delete-modal-overlay").classList.add("hidden");
+    document.getElementById("delete-modal").classList.add("hidden");
+}
+
 
 function renderModalTable(headers, rows) {
     const thead = document.querySelector("#modal-table thead");

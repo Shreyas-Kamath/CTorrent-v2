@@ -53,3 +53,29 @@
 </div>
 </body>
 </html>
+
+<!-- Delete Overlay -->
+<div id="delete-modal-overlay" class="hidden">
+    <div id="delete-modal">
+        <div class="modal-header">
+            <h2>Remove Torrent</h2>
+            <button class="modal-close" onclick="closeDeleteModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <p>This action will remove the torrent from your list.</p>
+
+            <div class="delete-warning">
+                <input type="checkbox" id="delete-files-checkbox">
+                <label for="delete-files-checkbox">
+                    Also delete downloaded files?
+                </label>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button onclick="closeDeleteModal()">Cancel</button>
+            <button class="red-btn" onclick="confirmRemoveTorrent()">Remove</button>
+        </div>
+    </div>
+</div>

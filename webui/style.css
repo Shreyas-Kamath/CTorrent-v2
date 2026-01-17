@@ -256,6 +256,53 @@ small {
     display: none !important;
 }
 
+#delete-modal {
+    background: #141414;
+    border-radius: 8px;
+    width: 420px;
+    max-width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+#delete-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+
+    /* center children */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#delete-modal .modal-body {
+    padding: 20px 24px;
+    line-height: 1.4;
+}
+
+.delete-warning {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid #3a1f1f;
+    background: #1a1212;
+    border-radius: 6px;
+    color: #f2b8b5;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 14px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #2a2a2a;
+}
+
 .status-downloading { color: #3498db; }
 .status-completed   { color: #2ecc71; }
 .status-paused      { color: #f1c40f; }
