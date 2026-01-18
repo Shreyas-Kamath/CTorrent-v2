@@ -15,7 +15,7 @@ boost::asio::awaitable<void> PeerConnection::start() {
 
         // most likely a dead / saturated / firewalled peer
         if (ec) { 
-            co_await stop();
+            stop();
             co_return;
         }
 
@@ -30,7 +30,7 @@ boost::asio::awaitable<void> PeerConnection::start() {
             
         // bad connection
         if (ec) {
-            co_await stop();
+            stop();
             co_return;
         }
     }
@@ -38,20 +38,26 @@ boost::asio::awaitable<void> PeerConnection::start() {
     last_received = std::chrono::steady_clock::now();
 
     co_await send_bitfield();
-        
-    boost::asio::co_spawn(_exec, watchdog(), boost::asio::detached);
+
+    auto self = shared_from_this();
+    co_spawn(_exec,
+        [self]() -> boost::asio::awaitable<void> {
+            co_await self->watchdog();
+        },
+        boost::asio::detached
+    );
     co_await message_loop();
 }
 
 // kill connection and signal to client that we wish to remove it
 // we also clean up all its blocks, if any
-boost::asio::awaitable<void> PeerConnection::stop() {
-    if (stopped) co_return;
-    stopped = true;
+void PeerConnection::stop() {
+    if (stopped.exchange(true, std::memory_order_release)) return;
 
     boost::system::error_code ec;
-    block_timeout_timer.cancel();
 
+    block_timeout_timer.cancel();
+    _socket.cancel(ec);
     _socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
     _socket.close(ec);
 }
@@ -75,7 +81,7 @@ boost::asio::awaitable<void> PeerConnection::handshake() {
         
     // bad connection
     if (ec) {
-        co_await stop();
+        stop();
         co_return;
     }
 
@@ -83,14 +89,14 @@ boost::asio::awaitable<void> PeerConnection::handshake() {
 
     // no errors allowed during handshake
     if (ec) {
-        co_await stop();
+        stop();
         co_return;
     }
 
     // bad peer or poor network
     if (!validate_handshake()) {
         // std::cout << "Handshake failed with peer " << p.ip();
-        co_await stop();
+        stop();
         co_return;
     }
 }
@@ -108,6 +114,11 @@ boost::asio::awaitable<void> PeerConnection::send_bitfield() {
 
     boost::system::error_code ec;
     co_await boost::asio::async_write(_socket, boost::asio::buffer(msg), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+
+    if (ec) {
+        stop();
+        co_return;
+    }
 }
 
 // check if the incoming handshake is valid
@@ -153,7 +164,7 @@ boost::asio::awaitable<std::optional<uint32_t>> PeerConnection::read_u32_be() {
     co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
     if (ec) {
-        co_await stop();
+        stop();
         co_return std::nullopt;
     }
 
@@ -170,7 +181,7 @@ boost::asio::awaitable<std::optional<uint8_t>> PeerConnection::read_u8() {
     co_await boost::asio::async_read(_socket, boost::asio::buffer(&id, 1), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
     if (ec) {
-        co_await stop();
+        stop();
         co_return std::nullopt;
     }
 
@@ -278,7 +289,13 @@ boost::asio::awaitable<void> PeerConnection::send_request(int piece_index, int b
     ++_in_flight;
     in_flight_blocks.emplace_back(piece_index, begin, length, std::chrono::steady_clock::now());
 
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(request_buf), boost::asio::bind_executor(write_strand, boost::asio::use_awaitable));
+    boost::system::error_code ec;
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(request_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+
+    if (ec) {
+        stop();
+        co_return;
+    }
 }
 
 boost::asio::awaitable<void> PeerConnection::send_cancel(uint32_t piece_index, uint32_t begin, uint32_t length) {
@@ -299,7 +316,13 @@ boost::asio::awaitable<void> PeerConnection::send_cancel(uint32_t piece_index, u
     std::memcpy(cancel_buf.data() + 9, &be_begin, 4);
     std::memcpy(cancel_buf.data() + 13, &be_length, 4);
 
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(cancel_buf), boost::asio::bind_executor(write_strand, boost::asio::use_awaitable));
+    boost::system::error_code ec;
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(cancel_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+
+    if (ec) {
+        stop();
+        co_return;
+    }
 }
 
 boost::asio::awaitable<void> PeerConnection::send_unchoke() {
@@ -314,7 +337,7 @@ boost::asio::awaitable<void> PeerConnection::send_unchoke() {
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
-        co_await stop();
+        stop();
         co_return;
     }
 
@@ -336,7 +359,7 @@ boost::asio::awaitable<void> PeerConnection::send_have(uint32_t piece) {
     boost::system::error_code ec;
 
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    if (ec) co_await stop();
+    if (ec) stop();
 }
 
 void PeerConnection::handle_message(Message_ID id) {
@@ -360,7 +383,7 @@ void PeerConnection::handle_message(Message_ID id) {
 // end helpers
 
 boost::asio::awaitable<void> PeerConnection::message_loop() {
-        while (_socket.is_open()) {
+        while (!stopped.load(std::memory_order_acquire)) {
             auto len = co_await read_u32_be();
 
             last_received = std::chrono::steady_clock::now();
@@ -378,7 +401,7 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
             co_await boost::asio::async_read(_socket, boost::asio::buffer(_msg_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
             if (ec) {
-                co_await stop();
+                stop();
                 co_return;
             } 
 
@@ -433,12 +456,12 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
 
 boost::asio::awaitable<void> PeerConnection::watchdog() {
     boost::system::error_code ec;
-    while (!stopped) {
+    while (!stopped.load(std::memory_order_acquire)) {
 
         block_timeout_timer.expires_after(std::chrono::seconds(1));
         co_await block_timeout_timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
-        if (stopped || ec) {
+        if (stopped.load(std::memory_order_acquire) || ec) {
             ec.clear();
             break;
         }
@@ -447,7 +470,7 @@ boost::asio::awaitable<void> PeerConnection::watchdog() {
 
         if (am_choked) {
             if (now - last_received > std::chrono::minutes(2) && now - last_unchoked > std::chrono::minutes(2)) {
-                co_await stop();
+                stop();
                 co_return;
             }
         }
@@ -535,7 +558,7 @@ boost::asio::awaitable<void> PeerConnection::handle_request() {
 
     boost::system::error_code ec;
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    if (ec) co_await stop();
+    if (ec) stop();
 
     // std::println("Sent a block to peer {}", p.addr().to_string());
 }

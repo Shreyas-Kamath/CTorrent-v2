@@ -54,10 +54,15 @@ void TorrentSession::start() {
 
 void TorrentSession::stop() {
     session_stopped.store(true, std::memory_order_release);
+
+    // cancel trackers
     for (auto& state: _tracker_list) {
         state._tracker_shared_ptr->stop();
         state.timer.cancel();
     }
+
+    // now clear peers
+    
 }
 
 boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {

@@ -43,14 +43,14 @@ public:
     Peer& peer() { return p; }
 
     [[nodiscard]] boost::asio::awaitable<void> start();
-    [[nodiscard]] boost::asio::awaitable<void> stop();
+    [[nodiscard]] void stop();
     [[nodiscard]] boost::asio::awaitable<void> send_have(uint32_t piece);
 
     double progress() const { return static_cast<double>(completed_pieces) * 100.0 / _num_pieces; }
     int requests() const { return _in_flight; }
     bool choked() const { return am_choked; }
     bool interested() const { return am_interested; }
-    bool is_stopped() const { return stopped; }
+    bool is_stopped() const { return stopped.load(std::memory_order_acquire); }
 
 private:
 
@@ -132,5 +132,5 @@ private:
 
     PieceManager& _pm;
 
-    bool stopped = false;
+    std::atomic<bool> stopped = false;
 };
