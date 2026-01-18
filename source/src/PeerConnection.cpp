@@ -265,6 +265,11 @@ boost::asio::awaitable<void> PeerConnection::send_interested() {
 
     boost::system::error_code ec;
     co_await boost::asio::async_write(_socket, boost::asio::buffer(_interested_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+
+    if (ec) {
+        stop();
+        co_return;
+    }
 }
 
 // ask for a piece
@@ -359,7 +364,10 @@ boost::asio::awaitable<void> PeerConnection::send_have(uint32_t piece) {
     boost::system::error_code ec;
 
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    if (ec) stop();
+    if (ec) {
+        stop();
+        co_return;
+    }
 }
 
 void PeerConnection::handle_message(Message_ID id) {
@@ -558,7 +566,10 @@ boost::asio::awaitable<void> PeerConnection::handle_request() {
 
     boost::system::error_code ec;
     co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    if (ec) stop();
+    if (ec) {
+        stop();
+        co_return;
+    }
 
     // std::println("Sent a block to peer {}", p.addr().to_string());
 }
