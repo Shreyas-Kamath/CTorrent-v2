@@ -53,7 +53,7 @@ void TorrentSession::start() {
     for (auto& state: _tracker_list) boost::asio::co_spawn(_net_exec, tracker_loop(state), boost::asio::detached);
 }
 
-void TorrentSession::stop() {
+boost::asio::awaitable<void> TorrentSession::stop() {
     session_stopped.store(true, std::memory_order_release);
 
     // cancel trackers
@@ -63,21 +63,19 @@ void TorrentSession::stop() {
     }
 
     // now clear peers
-    boost::asio::post(
-        peer_list_strand,
-        [this]() {
-            for (auto& [_, peer] : _peer_connections) {
-                peer->stop();
-            }
-            _peer_connections.clear();
-        }
-    );
+    {
+        co_await boost::asio::dispatch(peer_list_strand, boost::asio::use_awaitable);
+        for (auto& peer: _peer_connections | std::views::values) co_await peer->stop();
+    }
 }
 
-boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {
-    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
-    _peer_connections.erase(peer);
-    co_return;
+void TorrentSession::remove_peer(const Peer& peer) {
+    boost::asio::dispatch(
+        peer_list_strand,
+        [this, peer]() {
+            _peer_connections.erase(peer);
+        }
+    );
 }
 
 boost::asio::awaitable<void> TorrentSession::broadcast_have(uint32_t piece) {
@@ -233,7 +231,7 @@ boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::t
 
 boost::asio::awaitable<void> TorrentSession::run_peer(std::shared_ptr<PeerConnection> conn) {
     co_await conn->start();
-    co_await remove_peer(conn->peer());
+    remove_peer(conn->peer());
 }
 
 size_t TorrentSession::hash_bytes(const uint8_t* data, size_t len) noexcept {

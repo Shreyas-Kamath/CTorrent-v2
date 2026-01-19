@@ -30,7 +30,7 @@ private:
     boost::asio::awaitable<void> handle_connection(boost::asio::ip::tcp::socket socket);
 
     // request handling
-    void handle_request(const http::request<http::dynamic_body>& req,
+    boost::asio::awaitable<void> handle_request(const http::request<http::dynamic_body>& req,
                         http::response<http::string_body>& res);
 
     UploadedFile parse_multipart(const http::request<http::dynamic_body>& req);
@@ -40,11 +40,11 @@ private:
 
     void handle_static(const http::request<http::dynamic_body>& req,
                        http::response<http::string_body>& res);
-    void handle_api(const http::request<http::dynamic_body>& req,
+    boost::asio::awaitable<void> handle_api(const http::request<http::dynamic_body>& req,
                     http::response<http::string_body>& res);
     void handle_add_torrent(const http::request<http::dynamic_body>& req,
                             http::response<http::string_body>& res);
-    void handle_delete_torrent(const http::request<http::dynamic_body>& req,
+    boost::asio::awaitable<void> handle_delete_torrent(const http::request<http::dynamic_body>& req,
                             http::response<http::string_body>& res, const std::string& hash);                        
     void fetch_torrents_info(const http::request<http::dynamic_body>& req,
                             http::response<http::string_body>& res);

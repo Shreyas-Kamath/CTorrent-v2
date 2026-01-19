@@ -88,14 +88,14 @@ UploadedFile HttpServer::parse_multipart(const http::request<http::dynamic_body>
 
 // -------------------- request handling --------------------
 
-void HttpServer::handle_request(const http::request<http::dynamic_body>& req,
+boost::asio::awaitable<void> HttpServer::handle_request(const http::request<http::dynamic_body>& req,
                                 http::response<http::string_body>& res) {
     std::string target = req.target();
 
-    if (target.starts_with("/api/"))
-        return handle_api(req, res);
+    if (target.starts_with("/api/")) { co_await handle_api(req, res); co_return; }
 
     handle_static(req, res);
+    co_return;
 }
 
 void HttpServer::handle_static(const http::request<http::dynamic_body>& req,
@@ -120,21 +120,21 @@ void HttpServer::handle_static(const http::request<http::dynamic_body>& req,
     res.prepare_payload();
 }
 
-void HttpServer::handle_api(const http::request<http::dynamic_body>& req, 
+boost::asio::awaitable<void> HttpServer::handle_api(const http::request<http::dynamic_body>& req, 
                             http::response<http::string_body>& res) {
 
     auto args = req.target() | std::views::split('/') | std::ranges::to<std::vector<std::string>>();
 
     if (req.method() == http::verb::post) {
-        if (req.target() == "/api/torrents/add") { handle_add_torrent(req, res); return; }
-        if (args.back() == "remove") { handle_delete_torrent(req, res, args[3]); return; }
+        if (req.target() == "/api/torrents/add") { handle_add_torrent(req, res); co_return; }
+        if (args.back() == "remove") { co_await handle_delete_torrent(req, res, args[3]); co_return; }
     }
 
     if (req.method() == http::verb::get) {
-        if (req.target() == "/api/torrents") { fetch_torrents_info(req, res); return; }
-        if (args.back() == "peers") { fetch_peers_info(req, res, args[3]); return; } // hash
-        if (args.back() == "trackers") { fetch_trackers_info(req, res, args[3]);  return; }// hash
-    }
+        if (req.target() == "/api/torrents") { fetch_torrents_info(req, res); co_return; }
+        if (args.back() == "peers") { fetch_peers_info(req, res, args[3]); co_return; } // hash
+        if (args.back() == "trackers") { fetch_trackers_info(req, res, args[3]); co_return; }// hash
+    }co_return
 
     std::println("{}", args);
 
@@ -223,14 +223,22 @@ void HttpServer::handle_add_torrent(const http::request<http::dynamic_body>& req
     res.prepare_payload();
 }
 
-void HttpServer::handle_delete_torrent(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res, const std::string& hash) {
+boost::asio::awaitable<void> HttpServer::handle_delete_torrent(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res, const std::string& hash) {
     boost::json::object obj;
 
     auto body = boost::beast::buffers_to_string(req.body().data());
     auto json = boost::json::parse(body).as_object();
     bool remove_files = json["delete_files"].as_bool();
 
-    _client->remove_if_exists(hash, remove_files);    
+    co_await _client->remove_if_exists(hash, remove_files);
+       
+    obj["status"] = "ok";
+
+    res.result(http::status::ok);
+    res.set(http::field::content_type, "application/json");
+    res.body() = boost::json::serialize(obj);
+    res.prepare_payload();
+    co_return;
 }
 
 void HttpServer::fetch_torrents_info(const http::request<http::dynamic_body>& req, http::response<http::string_body>& res) {
@@ -277,7 +285,7 @@ awaitable<void> HttpServer::handle_connection(tcp::socket socket) {
         co_await http::async_read(socket, buffer, req, use_awaitable);
 
         http::response<http::string_body> res;
-        handle_request(req, res);
+        co_await handle_request(req, res);
 
         co_await http::async_write(socket, res, use_awaitable);
 

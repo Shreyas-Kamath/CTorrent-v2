@@ -31,7 +31,7 @@ public:
     const std::string_view& name() const;
 
     void start(); 
-    void stop();   
+    boost::asio::awaitable<void> stop();   
 
     // state for ui updates
     TorrentSnapshot snapshot() const;
@@ -40,7 +40,7 @@ public:
     boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
     
 private:
-    [[nodiscard]] boost::asio::awaitable<void> remove_peer(const Peer& peer);
+    void remove_peer(const Peer& peer);
     [[nodiscard]] boost::asio::awaitable<void> run_peer(std::shared_ptr<PeerConnection> conn);
     boost::asio::awaitable<void> broadcast_have(uint32_t piece);
 
