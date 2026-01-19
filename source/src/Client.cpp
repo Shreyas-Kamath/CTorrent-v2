@@ -49,7 +49,7 @@ AddTorrentResult Client::add_torrent(const std::vector<char>& data) {
     if (_sessions.contains(hash)) return { hash, std::string(md.name), false, "Torrent already exists" };
 
     // spawn a session
-    auto session = std::make_unique<TorrentSession>(_ioc.get_executor(), std::move(md), nc);
+    auto session = std::make_unique<TorrentSession>(_ioc.get_executor(), _disk_pool.get_executor(), std::move(md), nc);
 
     session->start();
 
@@ -63,6 +63,9 @@ void Client::remove_if_exists(const std::string& hash, bool remove_files) {
 
     if (it == _sessions.end()) return;
     it->second->stop();
+
+    // experimental
+    _sessions.erase(hash);
 }
 
 std::vector<TorrentSnapshot> Client::get_torrent_snapshots() const {

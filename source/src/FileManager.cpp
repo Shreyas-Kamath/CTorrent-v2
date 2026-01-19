@@ -35,67 +35,9 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
     if (!std::filesystem::exists(savefile)) std::ofstream out(savefile, std::ios::binary | std::ios::trunc);
 }
 
-void FileManager::enqueue_piece(uint32_t piece, std::vector<unsigned char>&& data) {
-    {
-        std::scoped_lock lock(queue_mutex);
-        write_queue.emplace(piece, std::move(data));
-    }
-    cv.notify_one();
-}
+boost::asio::awaitable<void> FileManager::write_piece(uint32_t piece, std::vector<unsigned char> data) {
+    co_await boost::asio::dispatch(disk_strand, boost::asio::use_awaitable);
 
-void FileManager::enqueue_read_block(uint32_t piece, uint32_t begin, uint32_t length, ReadCallback callback) {
-    if (stop.load()) return;
-    {
-        std::scoped_lock lock(queue_mutex);
-        read_queue.push(ReadJob{ piece, begin, length, std::move(callback) });
-    }
-    cv.notify_one();
-}
-
-void FileManager::worker_loop() {
-    while (true) {
-        WriteJob wj;
-        ReadJob  rj;
-        bool has_write = false;
-        bool has_read  = false;
-
-        {
-            std::unique_lock lock(queue_mutex);
-            cv.wait(lock, [&] {
-                return stop || !write_queue.empty() || !read_queue.empty();
-            });
-
-            if (stop && write_queue.empty() && read_queue.empty())
-                break;
-
-            if (!write_queue.empty()) {
-                wj = std::move(write_queue.front());
-                write_queue.pop();
-                has_write = true;
-            } else if (!read_queue.empty()) {
-                rj = std::move(read_queue.front());
-                read_queue.pop();
-                has_read = true;
-            }
-        }
-
-        if (has_write) {
-            write_to_disk(wj.piece, std::move(wj.data));
-            mark_complete(wj.piece);
-        }
-        else if (has_read) {
-            auto data = read_from_disk(rj.piece, rj.begin, rj.length);
-            boost::asio::post(
-                net_exec,
-                [cb = std::move(rj.callback), data = std::move(data)]() mutable {
-                    cb(std::move(data));
-                }
-            );
-        }
-    }
-}
-
-void FileManager::write_to_disk(uint32_t piece, std::vector<unsigned char>&& data) {
     uint64_t piece_offset = uint64_t(piece) * standard_piece_length;
     uint64_t remaining = data.size();
     uint64_t data_offset = 0;
@@ -119,9 +61,12 @@ void FileManager::write_to_disk(uint32_t piece, std::vector<unsigned char>&& dat
 
         if (remaining == 0) break;
     }
+
+    mark_complete(piece);
 }
 
-std::optional<std::vector<unsigned char>> FileManager::read_from_disk(uint32_t piece, uint32_t begin, uint32_t length) {
+boost::asio::awaitable<std::optional<std::vector<unsigned char>>> FileManager::read_block(uint32_t piece, uint32_t begin, uint32_t length) {
+    co_await boost::asio::dispatch(disk_strand, boost::asio::use_awaitable);
 
     std::vector<unsigned char> buffer(length);
 
@@ -138,12 +83,12 @@ std::optional<std::vector<unsigned char>> FileManager::read_from_disk(uint32_t p
         uint64_t read_size = std::min(remaining, f.length - file_offset);
 
         std::ifstream in(f.path, std::ios::binary);
-        if (!in) return std::nullopt;
+        if (!in) co_return std::nullopt;
 
         in.seekg(file_offset);
         in.read(reinterpret_cast<char*>(buffer.data() + data_offset), read_size);
 
-        if (!in) return std::nullopt;
+        if (!in) co_return std::nullopt;
 
         remaining   -= read_size;
         data_offset += read_size;
@@ -152,7 +97,7 @@ std::optional<std::vector<unsigned char>> FileManager::read_from_disk(uint32_t p
         if (remaining == 0) break;
     }
 
-    return buffer;
+    co_return buffer;
 }
 
 std::optional<std::vector<uint32_t>> FileManager::read_save_file() {

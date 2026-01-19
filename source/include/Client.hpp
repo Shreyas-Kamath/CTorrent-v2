@@ -39,6 +39,8 @@ public:
 private:
     // for sessions
     boost::asio::io_context _ioc;
+    boost::asio::thread_pool _disk_pool{1};
+
     std::unordered_map<std::string, std::unique_ptr<TorrentSession>> _sessions;
     void detect_network_capabilities();
     bool can_bind_ipv6();
