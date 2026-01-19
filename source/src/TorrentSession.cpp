@@ -14,13 +14,14 @@
 
 const std::string_view& TorrentSession::name() const { return _metadata.name; }
 
-TorrentSession::TorrentSession(boost::asio::any_io_executor exec, Metadata&& md, const NetworkCapabilities& nc): 
-    _exec(exec), 
-    peer_list_strand(boost::asio::make_strand(_exec)),
+TorrentSession::TorrentSession(boost::asio::any_io_executor net_exec, boost::asio::any_io_executor disk_exec, Metadata&& md, const NetworkCapabilities& nc): 
+    _net_exec(net_exec), 
+    _disk_exec(disk_exec),
+    peer_list_strand(boost::asio::make_strand(_net_exec)),
     _metadata(std::move(md)),
-    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length, _exec),
+    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length, _disk_exec),
     _nc(nc),
-    _pm(_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { boost::asio::co_spawn(_exec, broadcast_have(piece), boost::asio::detached); })
+    _pm(_net_exec, _disk_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { boost::asio::co_spawn(_net_exec, broadcast_have(piece), boost::asio::detached); })
     {
         build_tracker_list();
     }
@@ -38,10 +39,10 @@ boost::asio::awaitable<void> TorrentSession::on_tracker_response(const TrackerRe
 
         if (inserted) {
             it->second = std::make_shared<PeerConnection>(
-                _exec, peer, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, PeerDirection::Outbound
+                _net_exec, peer, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, PeerDirection::Outbound
             );
 
-            boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
+            boost::asio::co_spawn(_net_exec, run_peer(it->second), boost::asio::detached);
         }
     }
 
@@ -49,7 +50,7 @@ boost::asio::awaitable<void> TorrentSession::on_tracker_response(const TrackerRe
 }
 
 void TorrentSession::start() {
-    for (auto& state: _tracker_list) boost::asio::co_spawn(_exec, tracker_loop(state), boost::asio::detached);
+    for (auto& state: _tracker_list) boost::asio::co_spawn(_net_exec, tracker_loop(state), boost::asio::detached);
 }
 
 void TorrentSession::stop() {
@@ -62,7 +63,15 @@ void TorrentSession::stop() {
     }
 
     // now clear peers
-    
+    boost::asio::post(
+        peer_list_strand,
+        [this]() {
+            for (auto& [_, peer] : _peer_connections) {
+                peer->stop();
+            }
+            _peer_connections.clear();
+        }
+    );
 }
 
 boost::asio::awaitable<void> TorrentSession::remove_peer(const Peer& peer) {
@@ -79,7 +88,7 @@ boost::asio::awaitable<void> TorrentSession::broadcast_have(uint32_t piece) {
         if (!peer || peer->is_stopped()) continue;
 
         boost::asio::co_spawn(
-            _exec,
+            _net_exec,
             peer->send_have(piece),
             boost::asio::detached
         );
@@ -128,7 +137,7 @@ void TorrentSession::build_tracker_list() {
     auto add = [&](std::string_view url) {
         if (!url.empty() && !seen.contains(url)) {
             seen.insert(url);
-            _tracker_list.emplace_back(make_tracker(_exec, url, _metadata.info_hash, _nc), _exec);
+            _tracker_list.emplace_back(make_tracker(_net_exec, url, _metadata.info_hash, _nc), _net_exec);
         }
     };
 
@@ -216,7 +225,7 @@ boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::t
             std::move(socket), p, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, dir
         );
 
-        boost::asio::co_spawn(_exec, run_peer(it->second), boost::asio::detached);
+        boost::asio::co_spawn(_net_exec, run_peer(it->second), boost::asio::detached);
     }
 
     co_return;

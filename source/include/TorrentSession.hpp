@@ -5,6 +5,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include <print>
+
 #include <boost/asio.hpp>
 
 #include "BaseTracker.hpp"
@@ -21,7 +23,10 @@ struct NetworkCapabilities;
 
 class TorrentSession {
 public:
-    TorrentSession(boost::asio::any_io_executor exec, Metadata&& md, const NetworkCapabilities& nc);
+    TorrentSession(boost::asio::any_io_executor net_exec, boost::asio::any_io_executor disk_exec, Metadata&& md, const NetworkCapabilities& nc);
+    ~TorrentSession() {
+        std::println("Session destroyed");
+    }
 
     const std::string_view& name() const;
 
@@ -59,7 +64,9 @@ private:
 
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 
-    boost::asio::any_io_executor _exec;
+    boost::asio::any_io_executor _net_exec;
+    boost::asio::any_io_executor _disk_exec;
+    
     boost::asio::strand<boost::asio::any_io_executor> peer_list_strand;
 
     std::string peer_id = "-TR2940-1234567890ab";
