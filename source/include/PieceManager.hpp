@@ -4,6 +4,7 @@
 #include <boost/asio.hpp>
 
 #include <span>
+#include <print>
 
 class FileManager;
 
@@ -12,8 +13,12 @@ class FileManager;
 class PieceManager
 {
 public:
-    PieceManager(boost::asio::any_io_executor exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback);
-    ~PieceManager() = default;
+    PieceManager(boost::asio::any_io_executor net_exec, boost::asio::any_io_executor disk_exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback);
+    ~PieceManager() {
+        std::println("Pm destroyed");
+    }
+
+    // void stop()
 
     // these dont modify state, dont need a strand
     uint64_t downloaded_bytes() const;
@@ -28,11 +33,9 @@ public:
     [[nodiscard]] boost::asio::awaitable<std::optional<std::tuple<int, int, int>>> async_next_block_request(const boost::dynamic_bitset<>& peer_bitfield);
     [[nodiscard]] boost::asio::awaitable<void> async_add_block(uint32_t piece, uint32_t begin, std::span<const unsigned char> block);
     [[nodiscard]] boost::asio::awaitable<void> async_return_block(uint32_t piece, uint32_t begin);
-    [[nodiscard]] boost::asio::awaitable<bool> async_should_be_interested(std::optional<uint32_t> piece = std::nullopt);
     [[nodiscard]] boost::asio::awaitable<std::optional<std::vector<unsigned char>>> async_fetch_block(uint32_t piece, uint32_t begin, uint32_t length);
 
 private:
-    bool should_be_interested(std::optional<uint32_t> piece = std::nullopt);
     std::optional<std::tuple<int, int, int>> next_block_request(const boost::dynamic_bitset<>& peer_bitfield);
     void add_block(uint32_t piece, uint32_t begin, std::span<const unsigned char> block);
     inline bool endgame_required() const;
@@ -40,7 +43,9 @@ private:
     void return_block(uint32_t piece, uint32_t begin);
     std::vector<uint8_t> fetch_my_bitset() const;
 
-    boost::asio::any_io_executor _exec;
+    boost::asio::any_io_executor _net_exec;
+    boost::asio::any_io_executor _disk_exec;
+    
     boost::asio::strand<boost::asio::any_io_executor> pm_strand;
 
     void lazy_init(uint32_t piece_index);
@@ -77,20 +82,4 @@ private:
     std::function<void(uint32_t)> _piece_complete_callback;
 
     FileManager& _fm;
-
-    // it looks really bad, try to bridge the gap between an async context and a blocking thread
-    template <typename T, typename StartFn>
-    boost::asio::awaitable<T> await_callback(StartFn&& start) {
-        auto token = boost::asio::use_awaitable;
-
-        co_return co_await boost::asio::async_initiate<
-            decltype(token),
-            void(T)
-        >(
-            [&](auto handler) {
-                start(std::move(handler));
-            },
-            token
-        );
-    }
 };

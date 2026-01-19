@@ -8,9 +8,10 @@
 
 #include <openssl/sha.h>
 
-PieceManager::PieceManager(boost::asio::any_io_executor exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
-        _exec(exec),
-        pm_strand(boost::asio::make_strand(_exec)),
+PieceManager::PieceManager(boost::asio::any_io_executor net_exec, boost::asio::any_io_executor disk_exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
+        _net_exec(net_exec),
+        _disk_exec(disk_exec),
+        pm_strand(boost::asio::make_strand(_net_exec)),
         _num_pieces(num_pieces),
         _piece_length(piece_length),
         _total_size(total_size),
@@ -53,17 +54,10 @@ boost::asio::awaitable<std::optional<std::vector<unsigned char>>> PieceManager::
     co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
     // fetch from fm
 
-    auto data = co_await await_callback<std::optional<std::vector<unsigned char>>>(
-        [&](auto resume) {
-            _fm.enqueue_read_block(piece, begin, length,
-                [resume = std::move(resume)](auto result) mutable {
-                    resume(std::move(result));
-                }
-            );
-    });
+    auto data = co_await _fm.read_block(piece, begin, length);
 
-    uploaded += data->size();
-    co_return data;
+    if (data) { uploaded += data->size(); co_return data; }
+    co_return std::nullopt;
 }
 
 std::vector<uint8_t> PieceManager::fetch_my_bitset() const {
@@ -127,8 +121,12 @@ void PieceManager::add_block(uint32_t piece, uint32_t begin, std::span<const uns
 
             // std::cout << "Finished " << _completed_pieces << '/' << _num_pieces << '\n';
 
-            // push to filemananger queue
-            _fm.enqueue_piece(piece, std::move(curr_piece.data));
+            // fire-and-forget to filemanager
+            boost::asio::co_spawn(
+                _disk_exec,
+                _fm.write_piece(piece, std::move(curr_piece.data)),
+                boost::asio::detached
+            );
 
             // clear the data immediately to avoid choking up RAM
             curr_piece.data.clear(); curr_piece.data.shrink_to_fit();
