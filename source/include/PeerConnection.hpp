@@ -44,7 +44,7 @@ public:
     Peer& peer() { return p; }
 
     [[nodiscard]] boost::asio::awaitable<void> start();
-    [[nodiscard]] boost::asio::awaitable<void> stop();
+    void stop();
     [[nodiscard]] boost::asio::awaitable<void> send_have(uint32_t piece);
 
     double progress() const { return static_cast<double>(completed_pieces) * 100.0 / _num_pieces; }

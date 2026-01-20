@@ -65,7 +65,7 @@ boost::asio::awaitable<void> TorrentSession::stop() {
     // now clear peers
     {
         co_await boost::asio::dispatch(peer_list_strand, boost::asio::use_awaitable);
-        for (auto& peer: _peer_connections | std::views::values) co_await peer->stop();
+        for (auto& peer: _peer_connections | std::views::values) peer->stop();
     }
 }
 
