@@ -59,7 +59,6 @@ int64_t BEncodeParser::parse_int() {
 // parse string: <len>:<data>
 std::string_view BEncodeParser::parse_string() {
     // parse length
-    size_t start = pos;
     size_t colon = _data.find(':', pos);
     if (colon == std::string::npos) throw std::runtime_error("Missing ':' in string");
     // parse number without allocating

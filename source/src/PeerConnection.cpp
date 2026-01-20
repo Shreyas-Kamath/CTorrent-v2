@@ -177,7 +177,7 @@ boost::asio::awaitable<std::optional<uint32_t>> PeerConnection::read_u32_be() {
 }
 
 boost::asio::awaitable<std::optional<uint8_t>> PeerConnection::read_u8() {
-    uint8_t id;
+    uint8_t id{};
 
     boost::system::error_code ec;
     co_await boost::asio::async_read(_socket, boost::asio::buffer(&id, 1), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
@@ -408,12 +408,12 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
             boost::system::error_code ec;
             co_await boost::asio::async_read(_socket, boost::asio::buffer(msg_buf), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
             
-            std::span<const unsigned char> span{msg_buf};
-
             if (ec) {
                 co_await stop();
                 co_return;
             } 
+
+            std::span<const unsigned char> span{msg_buf};
 
             switch (id) {
                 case Message_ID::Request:
