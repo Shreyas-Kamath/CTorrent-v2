@@ -19,9 +19,9 @@ TorrentSession::TorrentSession(boost::asio::any_io_executor net_exec, boost::asi
     _disk_exec(disk_exec),
     peer_list_strand(boost::asio::make_strand(_net_exec)),
     _metadata(std::move(md)),
-    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length, _disk_exec),
+    _fm(std::filesystem::current_path(), _metadata.name, _metadata.files, _metadata.total_size, _metadata.piece_length),
     _nc(nc),
-    _pm(_net_exec, _disk_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { boost::asio::co_spawn(_net_exec, broadcast_have(piece), boost::asio::detached); })
+    _pm(_disk_exec, _metadata.piece_hashes.size(), _metadata.piece_length, _metadata.total_size, _metadata.piece_hashes, _fm, [this](uint32_t piece) { boost::asio::co_spawn(_net_exec, broadcast_have(piece), boost::asio::detached); })
     {
         build_tracker_list();
     }

@@ -8,10 +8,8 @@
 
 #include <openssl/sha.h>
 
-PieceManager::PieceManager(boost::asio::any_io_executor net_exec, boost::asio::any_io_executor disk_exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
-        _net_exec(net_exec),
+PieceManager::PieceManager(boost::asio::any_io_executor disk_exec, size_t num_pieces, size_t piece_length, size_t total_size, const std::vector<std::array<unsigned char, 20>>& piece_hashes, FileManager& fm, std::function<void(uint32_t)> callback): 
         _disk_exec(disk_exec),
-        pm_strand(boost::asio::make_strand(_net_exec)),
         _num_pieces(num_pieces),
         _piece_length(piece_length),
         _total_size(total_size),
@@ -32,29 +30,14 @@ PieceManager::PieceManager(boost::asio::any_io_executor net_exec, boost::asio::a
         }
     }
 
-boost::asio::awaitable<std::optional<std::tuple<int, int, int>>> PieceManager::async_next_block_request(const boost::dynamic_bitset<>& peer_bitfield) {
-    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
-    co_return next_block_request(peer_bitfield);
-}
-boost::asio::awaitable<void> PieceManager::async_add_block(uint32_t piece, uint32_t begin, std::span<const unsigned char> block) {
-    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
-    add_block(piece, begin, block);
-}
-boost::asio::awaitable<void> PieceManager::async_return_block(uint32_t piece, uint32_t begin) {
-    co_await boost::asio::post(pm_strand, boost::asio::use_awaitable);
-    return_block(piece, begin);
-}
-
-boost::asio::awaitable<std::vector<uint8_t>> PieceManager::async_fetch_my_bitset() const {
-    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
-    co_return fetch_my_bitset();
-}
-
 boost::asio::awaitable<std::optional<std::vector<unsigned char>>> PieceManager::async_fetch_block(uint32_t piece, uint32_t begin, uint32_t length) {
-    co_await boost::asio::dispatch(pm_strand, boost::asio::use_awaitable);
-    // fetch from fm
 
-    auto data = co_await _fm.read_block(piece, begin, length);
+    // launch reads from disk executor
+    auto data = co_await boost::asio::co_spawn(
+        _disk_exec,
+        _fm.read_block(piece, begin, length),
+        boost::asio::use_awaitable
+    );
 
     if (data) { uploaded += data->size(); co_return data; }
     co_return std::nullopt;

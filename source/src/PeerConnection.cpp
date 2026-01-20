@@ -104,7 +104,7 @@ boost::asio::awaitable<void> PeerConnection::handshake() {
 }
 
 boost::asio::awaitable<void> PeerConnection::send_bitfield() {
-    auto my_bitfield = co_await _pm.async_fetch_my_bitset();
+    auto my_bitfield = _pm.fetch_my_bitset();
 
     uint32_t len = boost::endian::native_to_big(1 + static_cast<uint32_t>(my_bitfield.size()));
 
@@ -220,7 +220,7 @@ void PeerConnection::handle_have(std::span<const unsigned char> msg_buf) {
 
 boost::asio::awaitable<void> PeerConnection::maybe_request_next() {
     while (!am_choked && _in_flight < MAX_IN_FLIGHT) {
-        auto req = co_await _pm.async_next_block_request(_peer_bitfield);
+        auto req = _pm.next_block_request(_peer_bitfield);
         if (!req) break;
 
         auto [piece, offset, length] = req.value();
@@ -230,8 +230,8 @@ boost::asio::awaitable<void> PeerConnection::maybe_request_next() {
 }
 
 // handle incoming piece
-boost::asio::awaitable<void> PeerConnection::handle_piece(std::span<const unsigned char> msg_buf) {
-    if (msg_buf.size() < 8) co_return;
+void PeerConnection::handle_piece(std::span<const unsigned char> msg_buf) {
+    if (msg_buf.size() < 8) return;
 
     uint32_t piece, begin;
     std::memcpy(&piece, msg_buf.data(), 4);
@@ -253,7 +253,7 @@ boost::asio::awaitable<void> PeerConnection::handle_piece(std::span<const unsign
     }
 
     auto block = std::span<const unsigned char>(msg_buf).subspan(8);
-    co_await _pm.async_add_block(piece, begin, block);
+    _pm.add_block(piece, begin, block);
 }
 
 // indicate interest to the peer
@@ -437,7 +437,7 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
                     break;
 
                 case Message_ID::Piece:
-                    co_await handle_piece(span);
+                    handle_piece(span);
                     co_await maybe_request_next();
                     break;
 
@@ -489,7 +489,7 @@ boost::asio::awaitable<void> PeerConnection::watchdog() {
             auto& curr = in_flight_blocks[i];
 
             if (now - curr.sent_at >= REQUEST_TIMEOUT) {
-                co_await _pm.async_return_block(curr.piece, curr.begin);
+                _pm.return_block(curr.piece, curr.begin);
 
                 in_flight_blocks[i] = in_flight_blocks.back();
                 in_flight_blocks.pop_back();
@@ -503,7 +503,7 @@ boost::asio::awaitable<void> PeerConnection::watchdog() {
     }
 
     // last pass to clear blocks after stopped
-    for (auto& block: in_flight_blocks) co_await _pm.async_return_block(block.piece, block.begin);
+    for (auto& block: in_flight_blocks) _pm.return_block(block.piece, block.begin);
 
     in_flight_blocks.clear();
     _in_flight = 0;

@@ -36,7 +36,6 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
 }
 
 boost::asio::awaitable<void> FileManager::write_piece(uint32_t piece, std::vector<unsigned char> data) {
-    co_await boost::asio::dispatch(disk_strand, boost::asio::use_awaitable);
 
     uint64_t piece_offset = uint64_t(piece) * standard_piece_length;
     uint64_t remaining = data.size();
@@ -63,11 +62,10 @@ boost::asio::awaitable<void> FileManager::write_piece(uint32_t piece, std::vecto
     }
 
     mark_complete(piece);
+    co_return;
 }
 
 boost::asio::awaitable<std::optional<std::vector<unsigned char>>> FileManager::read_block(uint32_t piece, uint32_t begin, uint32_t length) {
-    co_await boost::asio::dispatch(disk_strand, boost::asio::use_awaitable);
-
     std::vector<unsigned char> buffer(length);
 
     uint64_t piece_offset = uint64_t(piece) * standard_piece_length + begin;

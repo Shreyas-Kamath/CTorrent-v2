@@ -1,17 +1,18 @@
 #pragma once
 
 #include <filesystem>
-#include <atomic>
 #include <print>
 
 #include <boost/asio.hpp>
+
+// ALL CALLS TO FILEMANAGER MUST GO THROUGH THE DISK EXECUTOR ONLY
 
 struct TorrentFile;
 
 class FileManager {
 public:
 
-    FileManager(std::filesystem::path root, std::string_view torrent_name, std::vector<TorrentFile>& file_list, uint64_t total_size, uint64_t piece_length, boost::asio::any_io_executor disk_exec): standard_piece_length(piece_length), _disk_exec(disk_exec), disk_strand(boost::asio::make_strand(_disk_exec)) {
+    FileManager(std::filesystem::path root, std::string_view torrent_name, std::vector<TorrentFile>& file_list, uint64_t total_size, uint64_t piece_length): standard_piece_length(piece_length) {
         savefile = std::string(torrent_name) + ".fastresume";            
         build_output_files(root, torrent_name, file_list, total_size);
     }
@@ -25,8 +26,6 @@ public:
     std::optional<std::vector<uint32_t>> read_save_file();
 
 private:
-    boost::asio::any_io_executor _disk_exec;
-    boost::asio::strand<boost::asio::any_io_executor> disk_strand;
 
     struct OutputFile {
         std::filesystem::path path;

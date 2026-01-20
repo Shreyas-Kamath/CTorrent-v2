@@ -100,7 +100,7 @@ private:
     void handle_bitfield(std::span<const unsigned char> msg_buf);
     void handle_have(std::span<const unsigned char> msg_buf);
     [[nodiscard]] boost::asio::awaitable<void> maybe_request_next();
-    [[nodiscard]] boost::asio::awaitable<void> handle_piece(std::span<const unsigned char> msg_buf);
+    void handle_piece(std::span<const unsigned char> msg_buf);
     [[nodiscard]] boost::asio::awaitable<void> handle_request(std::span<const unsigned char> msg_buf);
 
     // buffers
