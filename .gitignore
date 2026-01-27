@@ -9,3 +9,5 @@
 *.torrent
 /.vscode/
 .vscode
+/CMakeFiles/
+CMakeFiles

@@ -243,9 +243,3 @@ std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const 
 
     return std::nullopt;
 }
-
-// bool PieceManager::should_be_interested(std::optional<uint32_t> piece = std::nullopt) {
-//     if (piece) {
-//         if (!)
-//     }
-// } 

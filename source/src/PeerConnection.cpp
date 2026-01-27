@@ -26,7 +26,7 @@ boost::asio::awaitable<void> PeerConnection::start() {
         build_handshake();
 
         boost::system::error_code ec;
-        co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+        co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
             
         // bad connection
         if (ec) {
@@ -76,7 +76,7 @@ boost::asio::awaitable<void> PeerConnection::handshake() {
     build_handshake();
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
         
     // bad connection
     if (ec) {
@@ -84,7 +84,7 @@ boost::asio::awaitable<void> PeerConnection::handshake() {
         co_return;
     }
 
-    co_await boost::asio::async_read(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     // no errors allowed during handshake
     if (ec) {
@@ -112,7 +112,7 @@ boost::asio::awaitable<void> PeerConnection::send_bitfield() {
     msg.insert(msg.end(), my_bitfield.begin(), my_bitfield.end());
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(msg), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(msg), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -160,7 +160,7 @@ boost::asio::awaitable<std::optional<uint32_t>> PeerConnection::read_u32_be() {
     std::array<char, 4> length_buf{};
 
     boost::system::error_code ec;
-    co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -177,7 +177,7 @@ boost::asio::awaitable<std::optional<uint8_t>> PeerConnection::read_u8() {
     uint8_t id{};
 
     boost::system::error_code ec;
-    co_await boost::asio::async_read(_socket, boost::asio::buffer(&id, 1), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(&id, 1), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -188,7 +188,7 @@ boost::asio::awaitable<std::optional<uint8_t>> PeerConnection::read_u8() {
 }
 
 // modify bitfield when peer sends theirs
-void PeerConnection::handle_bitfield(std::span<const unsigned char> msg_buf) {
+void PeerConnection::handle_bitfield() {
     size_t bit_index{};
 
     for (auto byte: msg_buf) {
@@ -204,7 +204,7 @@ void PeerConnection::handle_bitfield(std::span<const unsigned char> msg_buf) {
 }
 
 // modify bitfield when peer sends a HAVE
-void PeerConnection::handle_have(std::span<const unsigned char> msg_buf) {
+void PeerConnection::handle_have() {
     uint32_t index;
     std::memcpy(&index, msg_buf.data(), 4);
     boost::endian::big_to_native_inplace(index);
@@ -227,7 +227,7 @@ boost::asio::awaitable<void> PeerConnection::maybe_request_next() {
 }
 
 // handle incoming piece
-void PeerConnection::handle_piece(std::span<const unsigned char> msg_buf) {
+void PeerConnection::handle_piece() {
     if (msg_buf.size() < 8) return;
 
     uint32_t piece, begin;
@@ -261,7 +261,7 @@ boost::asio::awaitable<void> PeerConnection::send_interested() {
     _interested_buf[4] = static_cast<unsigned char>(Message_ID::Interested);
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(_interested_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(_interested_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -292,7 +292,7 @@ boost::asio::awaitable<void> PeerConnection::send_request(int piece_index, int b
     in_flight_blocks.emplace_back(piece_index, begin, length, std::chrono::steady_clock::now());
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(request_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(request_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -319,7 +319,7 @@ boost::asio::awaitable<void> PeerConnection::send_cancel(uint32_t piece_index, u
     std::memcpy(cancel_buf.data() + 13, &be_length, 4);
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(cancel_buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(cancel_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -336,7 +336,7 @@ boost::asio::awaitable<void> PeerConnection::send_unchoke() {
     buf[4] = static_cast<char>(Message_ID::Unchoke);    
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
 
     if (ec) {
         stop();
@@ -360,7 +360,7 @@ boost::asio::awaitable<void> PeerConnection::send_have(uint32_t piece) {
 
     boost::system::error_code ec;
 
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
     if (ec) {
         stop();
         co_return;
@@ -400,21 +400,19 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
             if (!msg_id) break;
             auto id = static_cast<Message_ID>(msg_id.value());
 
-            std::vector<unsigned char> msg_buf((len.value() - 1));
+            msg_buf.resize((len.value() - 1));
 
             boost::system::error_code ec;
-            co_await boost::asio::async_read(_socket, boost::asio::buffer(msg_buf), boost::asio::bind_executor(read_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+            co_await boost::asio::async_read(_socket, boost::asio::buffer(msg_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
             
             if (ec) {
                 stop();
                 break;
             } 
 
-            std::span<const unsigned char> span{msg_buf};
-
             switch (id) {
                 case Message_ID::Request:
-                    if (!peer_choked) co_await handle_request(span);
+                    if (!peer_choked) co_await handle_request();
                     break;
 
                 case Message_ID::Choke:
@@ -434,12 +432,12 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
                     break;
 
                 case Message_ID::Piece:
-                    handle_piece(span);
+                    handle_piece();
                     co_await maybe_request_next();
                     break;
 
                 case Message_ID::Have:
-                    handle_have(span);
+                    handle_have();
                     if (!am_interested) {
                         co_await send_interested();
                         am_interested = true;
@@ -447,7 +445,7 @@ boost::asio::awaitable<void> PeerConnection::message_loop() {
                     break;
 
                 case Message_ID::Bitfield:
-                    handle_bitfield(span);
+                    handle_bitfield();
                     if (!am_interested) {
                         co_await send_interested();
                         am_interested = true;
@@ -512,7 +510,7 @@ boost::asio::awaitable<void> PeerConnection::watchdog() {
     co_return;
 }
 
-std::optional<PeerConnection::ParsedRequest> PeerConnection::parse_request(std::span<const unsigned char> msg_buf) const {
+std::optional<PeerConnection::ParsedRequest> PeerConnection::parse_request() const {
     if (msg_buf.size() != 12) return std::nullopt;
 
     ParsedRequest req;
@@ -542,9 +540,9 @@ bool PeerConnection::is_valid_upload_request(const ParsedRequest& r) const {
     return true;
 }
 
-boost::asio::awaitable<void> PeerConnection::handle_request(std::span<const unsigned char> msg_buf) {
+boost::asio::awaitable<void> PeerConnection::handle_request() {
     // std::println("{} is requesting a block", p.addr().to_string());
-    auto parsed = parse_request(msg_buf);
+    auto parsed = parse_request();
     if (!parsed) co_return;
     if (!is_valid_upload_request(parsed.value())) co_return;
      
@@ -568,7 +566,7 @@ boost::asio::awaitable<void> PeerConnection::handle_request(std::span<const unsi
     buf.insert(buf.end(), block->begin(), block->end());
 
     boost::system::error_code ec;
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(write_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
     if (ec) {
         stop();
         co_return;

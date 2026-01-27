@@ -24,7 +24,7 @@ public:
         const std::string& peer_id,
         size_t num_pieces,
         PieceManager& pm,
-        PeerDirection dir): _exec(exec), _socket(_exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), read_strand(boost::asio::make_strand(_exec)), direction(dir) 
+        PeerDirection dir): _exec(exec), _socket(_exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), socket_strand(boost::asio::make_strand(_exec)), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);    
         }
@@ -36,7 +36,7 @@ public:
         const std::string& peer_id,
         size_t num_pieces,
         PieceManager& pm, 
-        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), write_strand(boost::asio::make_strand(_exec)), read_strand(boost::asio::make_strand(_exec)), p(peer), direction(dir) 
+        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), socket_strand(boost::asio::make_strand(_exec)), p(peer), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);
         }
@@ -65,7 +65,7 @@ private:
         uint32_t piece, begin, length;
     };
 
-    std::optional<ParsedRequest> parse_request(std::span<const unsigned char> msg_buf) const;
+    std::optional<ParsedRequest> parse_request() const;
     bool is_valid_upload_request(const ParsedRequest& r) const;
 
     struct InFlight {
@@ -85,8 +85,7 @@ private:
     boost::asio::ip::tcp::socket _socket;
     
     // helpers
-    boost::asio::strand<boost::asio::any_io_executor> write_strand;
-    boost::asio::strand<boost::asio::any_io_executor> read_strand;
+    boost::asio::strand<boost::asio::any_io_executor> socket_strand;
 
     [[nodiscard]] boost::asio::awaitable<std::optional<uint32_t>> read_u32_be();
     [[nodiscard]] boost::asio::awaitable<std::optional<uint8_t>> read_u8();
@@ -97,13 +96,14 @@ private:
     [[nodiscard]] boost::asio::awaitable<void> send_unchoke();
 
     void handle_message(Message_ID id);
-    void handle_bitfield(std::span<const unsigned char> msg_buf);
-    void handle_have(std::span<const unsigned char> msg_buf);
+    void handle_bitfield();
+    void handle_have();
     [[nodiscard]] boost::asio::awaitable<void> maybe_request_next();
-    void handle_piece(std::span<const unsigned char> msg_buf);
-    [[nodiscard]] boost::asio::awaitable<void> handle_request(std::span<const unsigned char> msg_buf);
+    void handle_piece();
+    [[nodiscard]] boost::asio::awaitable<void> handle_request();
 
     // buffers
+    std::vector<unsigned char> msg_buf;
     std::array<unsigned char, 5> _interested_buf;
     std::array<unsigned char, 68> _handshake_buf;
     
@@ -117,7 +117,7 @@ private:
 
     // state
     int _in_flight = 0;
-    int MAX_IN_FLIGHT = 10;
+    int MAX_IN_FLIGHT = 16;
     static constexpr auto REQUEST_TIMEOUT = std::chrono::seconds(10);
     boost::asio::steady_timer block_timeout_timer;
     std::vector<InFlight> in_flight_blocks;
