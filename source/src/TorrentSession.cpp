@@ -54,19 +54,14 @@ void TorrentSession::start() {
 }
 
 boost::asio::awaitable<void> TorrentSession::stop() {
-    session_stopped.store(true, std::memory_order_release);
+    session_stopped = true;
 
     // cancel trackers
     for (auto& state: _tracker_list) {
         state._tracker_shared_ptr->stop();
         state.timer.cancel();
     }
-
-    // now clear peers
-    {
-        co_await boost::asio::dispatch(peer_list_strand, boost::asio::use_awaitable);
-        for (auto& peer: _peer_connections | std::views::values) peer->stop();
-    }
+    co_return;
 }
 
 void TorrentSession::remove_peer(const Peer& peer) {
@@ -94,7 +89,7 @@ boost::asio::awaitable<void> TorrentSession::broadcast_have(uint32_t piece) {
 }
 
 boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
-    while (!session_stopped.load(std::memory_order_acquire)) {
+    while (!session_stopped) {
         try {
             auto resp = co_await state._tracker_shared_ptr->async_announce(peer_id, _pm.downloaded_bytes(), _pm.uploaded_bytes(), _pm.total_bytes());
             co_await on_tracker_response(resp);
@@ -125,7 +120,7 @@ boost::asio::awaitable<void> TorrentSession::tracker_loop(TrackerState& state) {
 
         boost::system::error_code ec;
         co_await state.timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
-        if (ec && ec == boost::asio::error::operation_aborted) break;
+        if (ec || session_stopped) break;
     }
 }
 
@@ -139,10 +134,12 @@ void TorrentSession::build_tracker_list() {
         }
     };
 
-    add(_metadata.announce);
+    // TEMPORARILY REJECT HTTP TRACKERS (because they are rarely used)
+    // custom created torrent files from magnet links will contain HTTP trackers
+    if (!_metadata.announce.contains("http://")) add(_metadata.announce);
 
     for (const auto& tier : _metadata.announce_list) {
-        for (const auto& url : tier) add(url);
+        for (const auto& url : tier) if (!url.contains("http://")) add(url);
     }
 }
 
@@ -209,23 +206,24 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
     return out;
 }
 
-boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir) {
+boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir) {
     // parse id in the client then pass as an arg
-    co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
 
-    std::string id = "Unknown";
-    Peer p(socket.remote_endpoint().address(), socket.remote_endpoint().port(), id);
+    // absolutely insane, not adding the strand breaks the frontend but makes inbound connections work
+    // co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
+    std::string id = "Unknown-In";
+
+    Peer p(ep.address(), ep.port(), id);
 
     auto [it, inserted] = _peer_connections.try_emplace(p);
 
     if (inserted) {
+        // std::println("Peer {} about to be inserted", ep.address().to_string());
         it->second = std::make_shared<PeerConnection>(
             std::move(socket), p, _metadata.info_hash, peer_id, _metadata.piece_hashes.size(), _pm, dir
         );
-
         boost::asio::co_spawn(_net_exec, run_peer(it->second), boost::asio::detached);
     }
-
     co_return;
 }
 

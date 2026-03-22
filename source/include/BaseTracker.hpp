@@ -48,7 +48,7 @@ public:
 
     const std::string_view url() const { return _raw_url; }
 
-    virtual void stop() { }
+    virtual void stop() = 0;
 
 protected:
     boost::asio::any_io_executor _exec;

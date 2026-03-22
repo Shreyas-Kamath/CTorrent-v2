@@ -24,7 +24,7 @@ public:
         const std::string& peer_id,
         size_t num_pieces,
         PieceManager& pm,
-        PeerDirection dir): _exec(exec), _socket(_exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), socket_strand(boost::asio::make_strand(_exec)), direction(dir) 
+        PeerDirection dir):  _socket(exec), _exec(exec), p(peer), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);    
         }
@@ -36,7 +36,7 @@ public:
         const std::string& peer_id,
         size_t num_pieces,
         PieceManager& pm, 
-        PeerDirection dir): _exec(socket.get_executor()), _socket(std::move(socket)), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), socket_strand(boost::asio::make_strand(_exec)), p(peer), direction(dir) 
+        PeerDirection dir): _socket(std::move(socket)), _exec(_socket.get_executor()), _info_hash(info_hash), _peer_id(peer_id), _num_pieces(num_pieces), _pm(pm), block_timeout_timer(_exec), p(peer), direction(dir) 
         {
             _peer_bitfield.resize(_num_pieces, false);
         }
@@ -44,14 +44,14 @@ public:
     Peer& peer() { return p; }
 
     [[nodiscard]] boost::asio::awaitable<void> start();
-    void stop();
+    void request_stop();
     [[nodiscard]] boost::asio::awaitable<void> send_have(uint32_t piece);
 
     double progress() const { return static_cast<double>(completed_pieces) * 100.0 / _num_pieces; }
     int requests() const { return _in_flight; }
     bool choked() const { return am_choked; }
     bool interested() const { return am_interested; }
-    bool is_stopped() const { return stopped.load(std::memory_order_acquire); }
+    bool is_stopped() const { return stopped; }
 
 private:
 
@@ -81,11 +81,11 @@ private:
     [[nodiscard]] boost::asio::awaitable<void> message_loop();
     [[nodiscard]] boost::asio::awaitable<void> watchdog();
 
-    boost::asio::any_io_executor _exec;
     boost::asio::ip::tcp::socket _socket;
+    boost::asio::any_io_executor _exec;
     
     // helpers
-    boost::asio::strand<boost::asio::any_io_executor> socket_strand;
+    // boost::asio::strand<boost::asio::any_io_executor> socket_strand;
 
     [[nodiscard]] boost::asio::awaitable<std::optional<uint32_t>> read_u32_be();
     [[nodiscard]] boost::asio::awaitable<std::optional<uint8_t>> read_u8();
@@ -134,5 +134,5 @@ private:
 
     PieceManager& _pm;
 
-    std::atomic<bool> stopped = false;
+    bool stopped = false;
 };

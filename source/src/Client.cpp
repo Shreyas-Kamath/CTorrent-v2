@@ -180,31 +180,9 @@ boost::asio::awaitable<void> Client::accept_loop_v4() {
 
         // detach later
         if (!ec) {
-            std::println("ipv4 inbound peer: {}", socket.remote_endpoint().address().to_string());
-
-            auto hash = co_await extract_info_hash(socket);
-            auto hexed_hash = hash.and_then([this](const auto& h) {
-                return std::optional<std::string>{ compute_info_hash_hex(h) };
-            });
-
-            if (!hexed_hash) {
-                socket.close();
-                continue;
-            }
-
-            auto it = _sessions.find(*hexed_hash);
-
-            // it is possible that a peer from a stale or previously downloaded torrent is trying to connect
-            // through someone else's peer list, we cannot serve requests here
-            if (it == _sessions.end()) {
-                socket.close();
-                continue;
-            }
-
-            // add the peer now
-            it->second->add_inbound_peer(std::move(socket), PeerDirection::Inbound);
+            auto ep = socket.remote_endpoint();
+            boost::asio::co_spawn(_ioc.get_executor(), handle_inbound(std::move(socket), ep), boost::asio::detached);
         }
-
     }
 }
 
@@ -220,16 +198,22 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
         co_await v6_acceptor->async_accept(socket, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
         if (!ec) {
-            std::println("ipv6 inbound peer: {}", socket.remote_endpoint().address().to_string());
+            auto ep = socket.remote_endpoint();
+            boost::asio::co_spawn(_ioc.get_executor(), handle_inbound(std::move(socket), ep), boost::asio::detached);
+        }
+    }
+}
 
+boost::asio::awaitable<void> Client::handle_inbound(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep) {
             auto hash = co_await extract_info_hash(socket);
             auto hexed_hash = hash.and_then([this](const auto& h) {
                 return std::optional<std::string>{ compute_info_hash_hex(h) };
             });
 
             if (!hexed_hash) {
+                // std::println("but hexed hash doesnt match?");
                 socket.close();
-                continue;
+                co_return;
             }
 
             auto it = _sessions.find(*hexed_hash);
@@ -238,13 +222,10 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
             // through someone else's peer list, we cannot serve requests here
             if (it == _sessions.end()) {
                 socket.close();
-                continue;
+                co_return;
             }
-
             // add the peer now
-            it->second->add_inbound_peer(std::move(socket), PeerDirection::Inbound);
-        }
-    }
+            co_await it->second->add_inbound_peer(std::move(socket), ep, PeerDirection::Inbound);
 }
 
 boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::extract_info_hash(boost::asio::ip::tcp::socket& socket) {
@@ -258,14 +239,15 @@ boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::ext
         co_return std::nullopt;
     }
 
-    if (static_cast<unsigned char>(buf[0]) != 19) {
-        std::println("Invalid pstrlen: {}", (static_cast<unsigned char>(buf[0])));
+    if (buf[0] != 19) {
+        // std::println("Invalid pstrlen: {}", static_cast<unsigned char>(buf[0]));
         co_return std::nullopt;
     }
+    // std::println("Pstrlen is valid");
 
     static constexpr char protocol[] = "BitTorrent protocol";
 
-    for (size_t i = 0; i < 19; ++i) if (static_cast<char>(buf[1 + i]) != protocol[i]) co_return std::nullopt;
+    for (size_t i = 0; i < 19; ++i) if (static_cast<char>(buf[i + 1]) != protocol[i]) co_return std::nullopt;
 
     std::array<unsigned char, 20> info_hash{};
 

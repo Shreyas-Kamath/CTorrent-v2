@@ -37,7 +37,7 @@ public:
     TorrentSnapshot snapshot() const;
     std::vector<PeerSnapshot> peer_snapshots() const;
     std::vector<TrackerSnapshot> tracker_snapshots() const;
-    boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket&& socket, PeerDirection dir);
+    boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir);
     
 private:
     void remove_peer(const Peer& peer);
@@ -60,7 +60,7 @@ private:
         TrackerState(std::shared_ptr<BaseTracker> t, boost::asio::any_io_executor exec): _tracker_shared_ptr(std::move(t)), timer(exec) {}
     };
 
-    std::atomic<bool> session_stopped = false;
+    bool session_stopped = false;
 
     boost::asio::awaitable<void> tracker_loop(TrackerState& state);
 

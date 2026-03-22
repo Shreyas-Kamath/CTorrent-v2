@@ -12,7 +12,7 @@
 
         if (!context.connected) {
             co_await context.socket.async_connect(context.endpoint, net::redirect_error(net::use_awaitable, ec));
-            if (ec) co_return false;
+            if (ec || stopped) co_return false;
             context.connected = true;
         }
         auto transaction_id = random_u32();
@@ -22,11 +22,11 @@
         write_buffer(buf, transaction_id, off);
 
         co_await context.socket.async_send(net::buffer(buf), net::redirect_error(net::use_awaitable, ec));
-        if (ec) co_return false;
+        if (ec || stopped) co_return false;
 
         std::array<unsigned char, 16> response_buf{};
         co_await context.socket.async_receive(net::buffer(response_buf), net::redirect_error(net::use_awaitable, ec));
-        if (ec) co_return false;
+        if (ec || stopped) co_return false;
 
         uint32_t action, return_transaction_id;
         uint64_t conn;
@@ -79,13 +79,12 @@
         write_buffer(buf, static_cast<uint16_t>(6881), off);
 
         co_await context.socket.async_send(net::buffer(buf), net::redirect_error(net::use_awaitable, ec));
-        if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+        if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
         std::array<unsigned char, 1500> response_buf{};
 
         auto size = co_await context.socket.async_receive(net::buffer(response_buf), net::redirect_error(net::use_awaitable, ec));
-
-        if (ec) co_return TrackerResponse{ {}, 180, ec.message() };
+        if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
         if (size < 20) co_return TrackerResponse{ {}, 180, "Incomplete UDP packet"};
 
@@ -124,7 +123,7 @@
             udp::resolver resolver(_exec);
 
             auto results = co_await resolver.async_resolve(context.proto, _host, std::to_string(_port), net::redirect_error(net::use_awaitable, ec));
-            if (ec || results.empty()) co_return false;
+            if (ec || results.empty() || stopped) co_return false;
 
             for (auto& r: results) {
                 auto ep = r.endpoint();
@@ -216,6 +215,8 @@ void UdpTracker::parse_v6(TrackerResponse& out, std::array<unsigned char, 1500>&
 }
 
 void UdpTracker::stop() {
+    stopped = true;
+
     if (udp_v4) {
         boost::system::error_code ec;
         udp_v4->socket.cancel(ec);

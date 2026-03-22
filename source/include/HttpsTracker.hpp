@@ -49,7 +49,7 @@ private:
     boost::asio::ssl::context _ssl_ctx;
     std::optional<tcp::resolver> _resolver;
     std::optional<ssl::stream<tcp::socket>> _stream;
-    std::atomic<bool> _stopped{false};
+    bool stopped = false;
 
     TrackerResponse parse_peers(const std::string& body);
     std::string _encoded_info_hash;

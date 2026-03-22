@@ -45,23 +45,23 @@ boost::asio::awaitable<TrackerResponse> HttpsTracker::async_announce(const std::
 
     // async
     auto results = co_await _resolver->async_resolve(_host, std::to_string(_port), net::redirect_error(net::use_awaitable, ec));
-    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
+    if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
     co_await net::async_connect(_stream->next_layer(), results, net::redirect_error(net::use_awaitable, ec));
-    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
+    if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
     co_await _stream->async_handshake(ssl::stream_base::client, net::redirect_error(net::use_awaitable, ec));
-    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
+    if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
     co_await http::async_write(*_stream, req, net::redirect_error(net::use_awaitable, ec));
-    if (ec || _stopped) co_return TrackerResponse{ {}, 180, ec.message() };
+    if (ec || stopped) co_return TrackerResponse{ {}, 180, ec.message() };
 
     boost::beast::flat_buffer buffer;
     http::response<http::dynamic_body> res;
 
     co_await http::async_read(*_stream, buffer, res, net::redirect_error(net::use_awaitable, ec));
 
-    if (ec || _stopped) {
+    if (ec || stopped) {
         // sometimes trackers behave badly, like closing the stream before the response is complete
         // tolerate it and try to parse what they send
         if (ec == http::error::end_of_stream || ec == net::ssl::error::stream_truncated) { ec = {}; }
@@ -70,7 +70,7 @@ boost::asio::awaitable<TrackerResponse> HttpsTracker::async_announce(const std::
 
     // ignore end of filestream
     co_await _stream->async_shutdown(net::redirect_error(net::use_awaitable, ec));
-    if (ec || _stopped) {
+    if (ec || stopped) {
         if (ec == http::error::end_of_stream || ec == net::ssl::error::stream_truncated) { ec = {}; }
         else co_return TrackerResponse{ {}, 180, ec.message() };
     }
@@ -182,7 +182,7 @@ void HttpsTracker::parse_v6(TrackerResponse& out, const BEncodeValue& peers_entr
 }
 
 void HttpsTracker::stop() {
-    _stopped.store(true, std::memory_order_release);
+    stopped = true;
 
     boost::system::error_code ec;
 

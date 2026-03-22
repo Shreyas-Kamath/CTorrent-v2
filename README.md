@@ -23,14 +23,14 @@ Eventually it all clicked, and it was absolutely worth it.
 - Minimalistic web UI
 - Supports multiple torrents
 - Performs well on unreliable networks  
-  *(reached a peak speed of ~27 MB/s on a mobile hotspot)*
+  *(reached a peak speed of ~65 MB/s on a mobile hotspot)*
 
 ---
 
 ## Standout Design Decisions
 
 - **Copy-free BEncode parser**
-- The entire project uses **only one mutex**, confined to the file writer thread
+- Multi-threaded with network and disk executor based workload approach
 - Piece selection and concurrency across hundreds of peers was painful to get right — but it works
 - Uses **coroutine-based Boost.Asio** with **asio strands** for concurrency instead of callbacks
 
@@ -63,6 +63,7 @@ This project was an excuse to go deep into **low-level systems programming**, ne
 
 - ~~Endgame mode~~ Done
 - HTTP trackers
-- Fast resume
+- ~~Fast resume~~ Done
 - Persistence across shutdowns
+- Proper shutdown - The hardest part
 - ~~Upload support~~ Done

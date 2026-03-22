@@ -32,6 +32,7 @@ public:
     void stop() override;
 
 private:
+    bool stopped = false;
 
     struct UdpContext {
         udp::socket socket;
