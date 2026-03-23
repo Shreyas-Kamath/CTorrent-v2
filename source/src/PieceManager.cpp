@@ -26,6 +26,7 @@ PieceManager::PieceManager(boost::asio::any_io_executor disk_exec, size_t num_pi
                 downloaded += piece_length_for_index(piece);
                 ++_completed_pieces;
                 _pieces[piece].is_complete = true;
+                set_my_bitfield(piece);
             }
         }
     }
