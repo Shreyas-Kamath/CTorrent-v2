@@ -206,12 +206,11 @@ std::vector<TrackerSnapshot> TorrentSession::tracker_snapshots() const {
     return out;
 }
 
-boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir) {
+boost::asio::awaitable<void> TorrentSession::add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir, std::string id) {
     // parse id in the client then pass as an arg
 
     // absolutely insane, not adding the strand breaks the frontend but makes inbound connections work
     // co_await boost::asio::post(peer_list_strand, boost::asio::use_awaitable);
-    std::string id = "Unknown-In";
 
     Peer p(ep.address(), ep.port(), id);
 

@@ -37,7 +37,7 @@ public:
     TorrentSnapshot snapshot() const;
     std::vector<PeerSnapshot> peer_snapshots() const;
     std::vector<TrackerSnapshot> tracker_snapshots() const;
-    boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir);
+    boost::asio::awaitable<void> add_inbound_peer(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep, PeerDirection dir, std::string id);
     
 private:
     void remove_peer(const Peer& peer);

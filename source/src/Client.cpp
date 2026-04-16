@@ -205,13 +205,12 @@ boost::asio::awaitable<void> Client::accept_loop_v6() {
 }
 
 boost::asio::awaitable<void> Client::handle_inbound(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep) {
-            auto hash = co_await extract_info_hash(socket);
-            auto hexed_hash = hash.and_then([this](const auto& h) {
-                return std::optional<std::string>{ compute_info_hash_hex(h) };
+            auto extracted = co_await extract_info_hash(socket);
+            auto hexed_hash = extracted.and_then([this](const auto& h) {
+                return std::optional<std::string>{ compute_info_hash_hex(h.first) };
             });
 
             if (!hexed_hash) {
-                // std::println("but hexed hash doesnt match?");
                 socket.close();
                 co_return;
             }
@@ -224,11 +223,13 @@ boost::asio::awaitable<void> Client::handle_inbound(boost::asio::ip::tcp::socket
                 socket.close();
                 co_return;
             }
+            // find
+            
             // add the peer now
-            co_await it->second->add_inbound_peer(std::move(socket), ep, PeerDirection::Inbound);
+            co_await it->second->add_inbound_peer(std::move(socket), ep, PeerDirection::Inbound, std::move(extracted->second));
 }
 
-boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::extract_info_hash(boost::asio::ip::tcp::socket& socket) {
+boost::asio::awaitable<std::optional<std::pair<std::array<unsigned char, 20>, std::string>>> Client::extract_info_hash(boost::asio::ip::tcp::socket& socket) {
     std::array<unsigned char, 68> buf{};
 
     boost::system::error_code ec;
@@ -239,10 +240,7 @@ boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::ext
         co_return std::nullopt;
     }
 
-    if (buf[0] != 19) {
-        // std::println("Invalid pstrlen: {}", static_cast<unsigned char>(buf[0]));
-        co_return std::nullopt;
-    }
+    if (buf[0] != 19) co_return std::nullopt;
     // std::println("Pstrlen is valid");
 
     static constexpr char protocol[] = "BitTorrent protocol";
@@ -250,10 +248,34 @@ boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> Client::ext
     for (size_t i = 0; i < 19; ++i) if (static_cast<char>(buf[i + 1]) != protocol[i]) co_return std::nullopt;
 
     std::array<unsigned char, 20> info_hash{};
-
     std::copy(buf.begin() + 28, buf.begin() + 48, info_hash.begin());
 
-    co_return info_hash;
+    const unsigned char* peer_id = buf.data() + 48;
+    auto id = decode_peer_id(std::string_view(reinterpret_cast<const char*>(peer_id), 20));
+
+    co_return std::make_pair(info_hash, id);
+}
+
+std::string Client::decode_peer_id(std::string_view pid) {
+    if (pid.size() != 20)
+        return "Unknown";
+
+    // Azureus-style: -XXYYYY-
+    if (pid[0] == '-' && pid[7] == '-') {
+        std::string_view code = pid.substr(1, 2);
+        std::string_view ver  = pid.substr(3, 4);
+
+        auto format_ver = [](std::string_view v) {
+            return std::format("{}.{}.{}", v[0], v[1], v[2]);
+        };
+
+        if (code == "qB") return "qBittorrent "  + format_ver(ver);
+        if (code == "TR") return "Transmission " + format_ver(ver);
+        if (code == "UT") return "µTorrent "     + format_ver(ver);
+        if (code == "LT") return "libtorrent "   + format_ver(ver);
+        if (code == "AZ") return "Azureus "      + format_ver(ver);
+    }
+    return "Unknown";
 }
 
 std::string Client::compute_info_hash_hex(const std::array<unsigned char, 20>& info_hash) const {

@@ -49,8 +49,9 @@ private:
     boost::asio::awaitable<void> accept_loop_v4();
     boost::asio::awaitable<void> accept_loop_v6();
     boost::asio::awaitable<void> handle_inbound(boost::asio::ip::tcp::socket socket, boost::asio::ip::tcp::endpoint ep);
-    boost::asio::awaitable<std::optional<std::array<unsigned char, 20>>> extract_info_hash(boost::asio::ip::tcp::socket& socket);
+    boost::asio::awaitable<std::optional<std::pair<std::array<unsigned char, 20>, std::string>>> extract_info_hash(boost::asio::ip::tcp::socket& socket);
     std::string compute_info_hash_hex(const std::array<unsigned char, 20>& info_hash) const;
+    std::string decode_peer_id(std::string_view pid);
 
     // acceptors
     std::unique_ptr<boost::asio::ip::tcp::acceptor> v4_acceptor;
