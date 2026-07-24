@@ -526,22 +526,22 @@ boost::asio::awaitable<void> PeerConnection::handle_request() {
     uint32_t be_piece = boost::endian::native_to_big(piece);
     uint32_t be_begin = boost::endian::native_to_big(begin);
 
-    std::vector<unsigned char> header{}; header.reserve(13);
+    std::array<uint8_t, 13> header;
 
-    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_len), reinterpret_cast<unsigned char*>(&be_len) + 4);
-    header.push_back(static_cast<unsigned char>(Message_ID::Piece));
-    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_piece), reinterpret_cast<unsigned char*>(&be_piece) + 4);
-    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_begin), reinterpret_cast<unsigned char*>(&be_begin) + 4);
+    std::memcpy(&header[0], &be_len, 4);
+    header[4] = static_cast<uint8_t>(Message_ID::Piece);
+    std::memcpy(&header[5], &be_piece, 4);
+    std::memcpy(&header[9], &be_begin, 4);
 
     boost::system::error_code ec;
 
     // vectored write
-    std::array<boost::asio::const_buffer, 2> buffer {
+    std::array<boost::asio::const_buffer, 2> buffers {
         boost::asio::buffer(header),
         boost::asio::buffer(*block)
     };
 
     // co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(buffer), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_await boost::asio::async_write(_socket, buffers, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
     if (ec || stopped) co_return;
 }
