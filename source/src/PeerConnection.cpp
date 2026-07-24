@@ -526,17 +526,22 @@ boost::asio::awaitable<void> PeerConnection::handle_request() {
     uint32_t be_piece = boost::endian::native_to_big(piece);
     uint32_t be_begin = boost::endian::native_to_big(begin);
 
-    std::vector<unsigned char> buf{}; buf.reserve(4 + msg_len);
+    std::vector<unsigned char> header{}; header.reserve(13);
 
-    buf.insert(buf.end(), reinterpret_cast<unsigned char*>(&be_len), reinterpret_cast<unsigned char*>(&be_len) + 4);
-    buf.push_back(static_cast<unsigned char>(Message_ID::Piece));
-    buf.insert(buf.end(), reinterpret_cast<unsigned char*>(&be_piece), reinterpret_cast<unsigned char*>(&be_piece) + 4);
-    buf.insert(buf.end(), reinterpret_cast<unsigned char*>(&be_begin), reinterpret_cast<unsigned char*>(&be_begin) + 4);
-
-    buf.insert(buf.end(), block->begin(), block->end());
+    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_len), reinterpret_cast<unsigned char*>(&be_len) + 4);
+    header.push_back(static_cast<unsigned char>(Message_ID::Piece));
+    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_piece), reinterpret_cast<unsigned char*>(&be_piece) + 4);
+    header.insert(header.end(), reinterpret_cast<unsigned char*>(&be_begin), reinterpret_cast<unsigned char*>(&be_begin) + 4);
 
     boost::system::error_code ec;
+
+    // vectored write
+    std::array<boost::asio::const_buffer, 2> buffer {
+        boost::asio::buffer(header),
+        boost::asio::buffer(*block)
+    };
+
     // co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    co_await boost::asio::async_write(_socket, boost::asio::buffer(buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_await boost::asio::async_write(_socket, boost::asio::buffer(buffer), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
     if (ec || stopped) co_return;
 }
