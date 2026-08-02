@@ -12,27 +12,33 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
     auto base = root / torrent_name;
 
     if (file_list.empty()) {
-        _output_files.push_back({ base, total_size, 0 });
+        OutputFile out = { std::fstream(base), total_size, 0 };
+        output_files.push_back(std::move(out));
         return;
     }
 
     for (const auto& file: file_list) {
-        _output_files.push_back({ base / file.path, file.length, offset });
+        auto path = base / file.path;
+
+        std::filesystem::create_directories(path.parent_path());
+
+        if (!std::filesystem::exists(path)) std::ofstream(path, std::ios::binary).close();
+
+        std::filesystem::resize_file(path, file.length);
+
+        OutputFile out;
+        out.length = file.length;
+        out.offset = offset;
+        out.handle.open(path, std::ios::binary | std::ios::in | std::ios::out);
+
+        output_files.emplace_back(std::move(out));
+
         offset += file.length;
     }
 
-    for (const auto& f: _output_files) {
-        std::filesystem::create_directories(f.path.parent_path());
-
-        if (!std::filesystem::exists(f.path)) {
-            std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
-            // preallocate space to prevent disk thrashing
-            out.seekp(f.length - 1);
-            out.write("", 1);   
-        }
-    }
-
-    if (!std::filesystem::exists(savefile)) std::ofstream out(savefile, std::ios::binary | std::ios::trunc);
+    auto savefile_path = root / (std::string(torrent_name) + ".fastresume");
+    if (!std::filesystem::exists(savefile_path)) std::ofstream(savefile_path, std::ios::binary).close();
+    savefile.open(savefile_path, std::ios::binary | std::ios::in | std::ios::out | std::ios::app);
 }
 
 boost::asio::awaitable<void> FileManager::write_piece(uint32_t piece, std::vector<unsigned char> data) {
@@ -41,24 +47,24 @@ boost::asio::awaitable<void> FileManager::write_piece(uint32_t piece, std::vecto
     uint64_t remaining = data.size();
     uint64_t data_offset = 0;
 
-    for (const auto& f : _output_files) {
-        if (piece_offset >= f.offset + f.length) continue;
-        if (piece_offset + remaining <= f.offset) break;
+    auto start = std::ranges::upper_bound(output_files, piece_offset, {}, &OutputFile::offset);
+    if (start != output_files.begin()) start = prev(start);
 
-        uint64_t file_offset = piece_offset > f.offset ? piece_offset - f.offset : 0;
-
-        uint64_t write_size = std::min(remaining, f.length - file_offset);
-
-        std::ofstream out(f.path, std::ios::binary | std::ios::in | std::ios::out);
+    while (remaining > 0) {
+        uint64_t file_offset = piece_offset > start->offset ? piece_offset - start->offset : 0;
+        uint64_t write_size = std::min(remaining, start->length - file_offset);
         
-        out.seekp(file_offset);
-        out.write(reinterpret_cast<const char*>(data.data() + data_offset), write_size);
+        start->handle.seekp(file_offset);
+        start->handle.write(reinterpret_cast<const char*>(data.data() + data_offset), write_size);
 
         remaining -= write_size;
         data_offset += write_size;
         piece_offset += write_size;
 
         if (remaining == 0) break;
+
+        start = next(start);
+        assert(start != output_files.end() && "https://en.cppreference.com/cpp/algorithm/ranges/upper_bound");
     }
 
     mark_complete(piece);
@@ -72,47 +78,38 @@ boost::asio::awaitable<std::optional<std::vector<unsigned char>>> FileManager::r
     uint64_t remaining = length;
     uint64_t data_offset = 0;
 
-    for (const auto& f : _output_files) {
-        if (piece_offset >= f.offset + f.length) continue;
-        if (piece_offset + remaining <= f.offset) break;
+    auto start = std::ranges::upper_bound(output_files, piece_offset, {}, &OutputFile::offset);
+    if (start != output_files.begin()) start = prev(start);
 
-        uint64_t file_offset = piece_offset > f.offset ? piece_offset - f.offset : 0;
+    while (remaining > 0) {
 
-        uint64_t read_size = std::min(remaining, f.length - file_offset);
+        uint64_t file_offset = piece_offset > start->offset ? piece_offset - start->offset : 0;
+        uint64_t read_size = std::min(remaining, start->length - file_offset);
 
-        std::ifstream in(f.path, std::ios::binary);
-        if (!in) co_return std::nullopt;
-
-        in.seekg(file_offset);
-        in.read(reinterpret_cast<char*>(buffer.data() + data_offset), read_size);
-
-        if (!in) co_return std::nullopt;
+        start->handle.seekg(file_offset);
+        start->handle.read(reinterpret_cast<char*>(buffer.data() + data_offset), read_size);
 
         remaining   -= read_size;
         data_offset += read_size;
         piece_offset += read_size;
 
         if (remaining == 0) break;
+
+        start = next(start);
+        assert(start != output_files.end());
     }
 
     co_return buffer;
 }
 
-std::optional<std::vector<uint32_t>> FileManager::read_save_file() {
-    if (std::filesystem::exists(savefile)) {
-        std::ifstream in(savefile, std::ios::binary);
-
-        std::vector<uint32_t> out;
-
-        uint32_t piece;
-        while (in.read(reinterpret_cast<char*>(&piece), sizeof(piece))) out.push_back(piece);
-
-        return out;
-    }
-    return std::nullopt;
+std::vector<uint32_t> FileManager::read_save_file() {
+    // use a bitset for less space
+    std::vector<uint32_t> out;
+    uint32_t piece;
+    while (savefile.read(reinterpret_cast<char*>(&piece), sizeof(piece))) out.push_back(piece);
+    return out;
 }
 
 void FileManager::mark_complete(uint32_t piece) {
-    std::ofstream out(savefile, std::ios::app | std::ios::binary | std::ios::out);
-    out.write(reinterpret_cast<const char*>(&piece), sizeof(piece));
+    savefile.write(reinterpret_cast<const char*>(&piece), sizeof(piece));
 }

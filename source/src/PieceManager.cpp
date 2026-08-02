@@ -21,13 +21,11 @@ PieceManager::PieceManager(boost::asio::any_io_executor disk_exec, size_t num_pi
         _pieces.resize(_num_pieces);
 
         auto completed = _fm.read_save_file();
-        if (completed) {
-            for (auto piece: *completed) {
-                downloaded += piece_length_for_index(piece);
-                ++_completed_pieces;
-                _pieces[piece].is_complete = true;
-                set_my_bitfield(piece);
-            }
+        for (auto piece: completed) {
+            downloaded += piece_length_for_index(piece);
+            ++_completed_pieces;
+            _pieces[piece].is_complete = true;
+            set_my_bitfield(piece);
         }
     }
 
@@ -185,7 +183,7 @@ std::optional<std::tuple<int, int, int>> PieceManager::next_block_request(const 
         if (_pieces[i].is_complete) continue;
 
         if (peer_bitfield.test(i)) {
-            lazy_init((uint32_t)i);
+            lazy_init(static_cast<uint32_t>(i));
             auto& curr = _pieces[i];
             for (int j{}; j < curr.block_status.size(); ++j) {
                 auto& status = curr.block_status[j];
