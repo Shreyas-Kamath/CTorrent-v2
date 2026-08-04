@@ -3,7 +3,6 @@
 
 #include <iostream>
 #include <span>
-#include <print>
 
 boost::asio::awaitable<void> PeerConnection::start() {
     auto self = shared_from_this();
@@ -27,10 +26,7 @@ boost::asio::awaitable<void> PeerConnection::start() {
         // co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
         co_await boost::asio::async_write(_socket, boost::asio::buffer(_handshake_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
         // bad connection
-        if (ec) {
-            std::println("Inbound error after building handshake: {}", ec.message());
-            co_return;
-        }
+        if (ec) co_return;
     }
 
     last_received = std::chrono::steady_clock::now();
@@ -144,16 +140,13 @@ std::string PeerConnection::decode_peer_id(std::string_view pid) {
 
 // helpers
 boost::asio::awaitable<std::optional<uint32_t>> PeerConnection::read_u32_be() {
-    std::array<char, 4> length_buf{};
+    uint32_t len{};
 
     boost::system::error_code ec;
-    // co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::bind_executor(socket_strand, boost::asio::redirect_error(boost::asio::use_awaitable, ec)));
-    co_await boost::asio::async_read(_socket, boost::asio::buffer(length_buf), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_await boost::asio::async_read(_socket, boost::asio::buffer(&len, sizeof(uint32_t)), boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
     if (ec || stopped) co_return std::nullopt;
 
-    uint32_t len;
-    std::memcpy(&len, length_buf.data(), 4);
     boost::endian::big_to_native_inplace(len);
     co_return len;
 }

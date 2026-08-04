@@ -1,8 +1,6 @@
 #include "FileManager.hpp"
 #include "MetadataParser.hpp"
 
-#include <fstream>
-
 #include <boost/asio.hpp>
 
 // make a list of output files with offsets
@@ -14,7 +12,6 @@ void FileManager::build_output_files(std::filesystem::path root, std::string_vie
     if (file_list.empty()) {
         OutputFile out = { std::fstream(base), total_size, 0 };
         output_files.push_back(std::move(out));
-        return;
     }
 
     for (const auto& file: file_list) {
@@ -96,7 +93,7 @@ boost::asio::awaitable<std::optional<std::vector<unsigned char>>> FileManager::r
         if (remaining == 0) break;
 
         start = next(start);
-        assert(start != output_files.end());
+        assert(start != output_files.end() && "https://en.cppreference.com/cpp/algorithm/ranges/upper_bound");
     }
 
     co_return buffer;
@@ -106,7 +103,12 @@ std::vector<uint32_t> FileManager::read_save_file() {
     // use a bitset for less space
     std::vector<uint32_t> out;
     uint32_t piece;
+
+    savefile.clear();
+    savefile.seekg(0, std::ios::beg);
     while (savefile.read(reinterpret_cast<char*>(&piece), sizeof(piece))) out.push_back(piece);
+
+    savefile.clear();
     return out;
 }
 
